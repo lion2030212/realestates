@@ -23,10 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const manageUsersBtn = document.getElementById('manage-users-btn');
     const permissionsBtn = document.getElementById('permissions-btn');
     const backupBtn = document.getElementById('backup-btn');
+    const statsBtn = document.getElementById('stats-btn');
 
     const usersModal = document.getElementById('users-modal');
     const usersModalCloseBtn = document.querySelector('#users-modal .close-btn');
     const usersListContainer = document.getElementById('users-list-container');
+    const userRoleFilter = document.getElementById('user-role-filter');
     const addUserForm = document.getElementById('add-user-form');
     const showAddUserFormBtn = document.getElementById('show-add-user-form');
     const newUserRoleInput = document.getElementById('new-user-role');
@@ -52,8 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const permissionsModalCloseBtn = document.querySelector('#permissions-modal .close-btn');
     const approvedTransactionsContainer = document.getElementById('approved-transactions-container');
     const noApprovedTransactionsMsg = document.getElementById('no-approved-transactions');
+    const approvedDurationFilter = document.getElementById('approved-duration-filter');
+    const customDateFilter = document.getElementById('custom-date-filter');
+    const approvedFromDate = document.getElementById('approved-from-date');
+    const approvedToDate = document.getElementById('approved-to-date');
 
-    // Backup Modal Elements
     const backupModal = document.getElementById('backup-modal');
     const backupModalCloseBtn = document.querySelector('#backup-modal .close-btn');
     const createBackupBtn = document.getElementById('create-backup-btn');
@@ -66,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartFilterYearlyBtn = document.getElementById('chart-filter-yearly');
     let chartFilterType = 'monthly';
 
-    // Advanced Search Elements
     const advancedSearchBtn = document.getElementById('advanced-search-btn');
     const searchActiveBadge = document.getElementById('search-active-badge');
     const advancedSearchModal = document.getElementById('advanced-search-modal');
@@ -75,15 +79,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchTypeInput = document.getElementById('search-type');
     const searchCategoryInput = document.getElementById('search-category');
     const searchNoteInput = document.getElementById('search-note');
-    const searchFromToInput = document.getElementById('search-from-to'); // New field
-    const searchUsernameInput = document.getElementById('search-username'); // New field
+    const searchFromToInput = document.getElementById('search-from-to');
+    const searchUsernameInput = document.getElementById('search-username');
     const searchFromDateInput = document.getElementById('search-from-date');
     const searchToDateInput = document.getElementById('search-to-date');
     const clearSearchBtn = document.getElementById('clear-search-btn');
+    
+    // Stats Modal Elements
+    const statsModal = document.getElementById('stats-modal');
+    const statsModalCloseBtn = document.querySelector('#stats-modal .close-btn');
+    const statsDurationFilter = document.getElementById('stats-duration-filter');
+    const statsChartCanvas = document.getElementById('statsChart');
+    const barChartBtn = document.getElementById('bar-chart-btn');
+    const pieChartBtn = document.getElementById('pie-chart-btn');
+    const topIncomeList = document.getElementById('top-income-list');
+    const topExpenseList = document.getElementById('top-expense-list');
+    const noTopIncomeMsg = document.getElementById('no-top-income');
+    const noTopExpenseMsg = document.getElementById('no-top-expense');
+    let statsChart;
 
     let currentUser = null;
     let isSearchActive = false;
-
+    let loginAttempts = parseInt(localStorage.getItem('loginAttempts')) || 0;
+    const MAX_LOGIN_ATTEMPTS = 5;
+    
     const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
     
     const rolesMap = {
@@ -94,6 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'new_employee': 'موظف',
         'viewer': 'القارئ'
     };
+
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let pendingTransactions = JSON.parse(localStorage.getItem('pendingTransactions')) || [];
+    let myChart;
 
     function getInitialUsers() {
         return [
@@ -119,10 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveUsers(users) {
         localStorage.setItem('users', JSON.stringify(users));
     }
-    
-    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
-    let pendingTransactions = JSON.parse(localStorage.getItem('pendingTransactions')) || [];
-    let myChart;
 
     function saveTransactions() {
         localStorage.setItem('transactions', JSON.stringify(transactions));
@@ -130,10 +149,131 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function savePendingTransactions() {
         localStorage.setItem('pendingTransactions', JSON.stringify(pendingTransactions));
-        updateNotificationBadge();
     }
     
+    function getNotifications() {
+        return JSON.parse(localStorage.getItem('notifications')) || [];
+    }
+
+    function saveNotifications(notifications) {
+        localStorage.setItem('notifications', JSON.stringify(notifications));
+    }
+
+    function updateNotificationBadge() {
+        if (!currentUser) return;
+        
+        const allNotifications = getNotifications();
+        const userNotifications = allNotifications.filter(n => n.userId === currentUser.id);
+        const count = userNotifications.length;
+
+        if (count > 0) {
+            notificationBadge.textContent = count;
+            notificationBadge.classList.remove('hidden');
+        } else {
+            notificationBadge.classList.add('hidden');
+        }
+    }
+
+    function createNotificationsForPendingTransaction(pendingTransaction) {
+        let notifications = getNotifications();
+        const allUsers = getUsers();
+        const approverRoles = ['manager', 'admin', 'editor'];
+
+        const creatorNotification = {
+            id: Date.now() + Math.random(),
+            userId: currentUser.id,
+            transactionId: pendingTransaction.id,
+            message: `Your transaction request #${pendingTransaction.id} is pending approval.`
+        };
+        notifications.push(creatorNotification);
+        
+        const approvers = allUsers.filter(user => approverRoles.includes(user.role));
+        approvers.forEach(approver => {
+            if (approver.id === currentUser.id) return;
+
+            const approverNotification = {
+                id: Date.now() + Math.random(),
+                userId: approver.id,
+                transactionId: pendingTransaction.id,
+                message: `A new transaction #${pendingTransaction.id} requires your approval.`
+            };
+            notifications.push(approverNotification);
+        });
+
+        saveNotifications(notifications);
+    }
+    
+    function clearNotificationsForTransaction(transactionId) {
+        let notifications = getNotifications();
+        const updatedNotifications = notifications.filter(n => n.transactionId !== transactionId);
+        saveNotifications(updatedNotifications);
+    }
+
     durationFilter.value = 'current-month';
+
+    function initApp(user) {
+        currentUser = user;
+        localStorage.setItem('loggedInUser', JSON.stringify(currentUser));
+        localStorage.setItem('loginAttempts', 0);
+        loginScreen.classList.add('hidden');
+        mainApp.classList.remove('hidden');
+        errorMessage.style.display = 'none';
+        
+        userGreetingSpan.textContent = `مرحبا، ${currentUser.username}`;
+        
+        const isManager = currentUser.role === 'manager';
+        const canSeeNotifications = ['manager', 'admin', 'editor', 'employee', 'new_employee'].includes(currentUser.role);
+        const canAdd = ['manager', 'admin', 'editor', 'employee', 'new_employee'].includes(currentUser.role);
+        
+        manageUsersBtn.classList.toggle('hidden', !isManager);
+        permissionsBtn.classList.toggle('hidden', !isManager);
+        backupBtn.classList.toggle('hidden', !isManager);
+        document.querySelector('#advanced-search-modal .manager-only').classList.toggle('hidden', !isManager);
+
+        addIncomeBtn.classList.toggle('hidden', !canAdd);
+        addExpenseBtn.classList.toggle('hidden', !canAdd);
+        notificationsBtn.classList.toggle('hidden', !canSeeNotifications);
+        
+        applyFilter();
+        updateSummary();
+        initializeChart();
+        updateChart();
+        updateNotificationBadge();
+    }
+
+    function checkLoginStatus() {
+        const storedUser = localStorage.getItem('loggedInUser');
+        if (storedUser) {
+            try {
+                const user = JSON.parse(storedUser);
+                initApp(user);
+            } catch (e) {
+                console.error("Failed to parse stored user data:", e);
+                localStorage.removeItem('loggedInUser');
+            }
+        }
+    }
+
+    function handleFailedLogin() {
+        loginAttempts++;
+        localStorage.setItem('loginAttempts', loginAttempts);
+        errorMessage.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة.';
+        errorMessage.style.display = 'block';
+        passwordInput.value = '';
+        
+        if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+            const loginButton = loginForm.querySelector('.modern-btn');
+            loginButton.disabled = true;
+            errorMessage.textContent = `تم تجاوز الحد الأقصى للمحاولات (${MAX_LOGIN_ATTEMPTS}). الرجاء المحاولة بعد 30 ثانية.`;
+            setTimeout(() => {
+                loginButton.disabled = false;
+                loginAttempts = 0;
+                localStorage.setItem('loginAttempts', 0);
+                errorMessage.textContent = '';
+                errorMessage.style.display = 'none';
+            }, 30000); // 30 seconds
+        }
+    }
 
     loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -144,41 +284,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const user = users.find(u => u.username === username && u.password === password);
 
         if (user) {
-            currentUser = user;
-            loginScreen.classList.add('hidden');
-            mainApp.classList.remove('hidden');
-            errorMessage.style.display = 'none';
-            
-            userGreetingSpan.textContent = `مرحبا، ${currentUser.username}`;
-            
-            const isManager = currentUser.role === 'manager';
-            const canAdd = ['manager', 'admin', 'editor', 'employee', 'new_employee'].includes(currentUser.role);
-            const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
-
-            manageUsersBtn.classList.toggle('hidden', !isManager);
-            permissionsBtn.classList.toggle('hidden', !isManager);
-            backupBtn.classList.toggle('hidden', !isManager);
-            document.querySelector('#advanced-search-modal .manager-only').classList.toggle('hidden', !isManager);
-
-
-            addIncomeBtn.classList.toggle('hidden', !canAdd);
-            addExpenseBtn.classList.toggle('hidden', !canAdd);
-            notificationsBtn.classList.toggle('hidden', !canApprove);
-            
-            applyFilter();
-            updateSummary();
-            initializeChart();
-            updateChart();
-            updateNotificationBadge();
+            initApp(user);
         } else {
-            errorMessage.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة.';
-            errorMessage.style.display = 'block';
-            passwordInput.value = '';
+            handleFailedLogin();
         }
     });
 
     logoutBtn.addEventListener('click', () => {
         currentUser = null;
+        localStorage.removeItem('loggedInUser');
         loginScreen.classList.remove('hidden');
         mainApp.classList.add('hidden');
         loginForm.reset();
@@ -192,9 +306,138 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarCloseBtn.addEventListener('click', () => {
         sidebar.classList.remove('show');
     });
+
+    statsBtn.addEventListener('click', () => {
+        statsModal.style.display = 'block';
+        if (!statsChart) {
+            initializeStatsChart();
+        }
+        statsDurationFilter.value = 'current-month';
+        updateStatsChart();
+        renderTopTransactions();
+    });
+
+    statsModalCloseBtn.addEventListener('click', () => {
+        statsModal.style.display = 'none';
+    });
+
+    statsDurationFilter.addEventListener('change', () => {
+        updateStatsChart();
+        renderTopTransactions();
+    });
+
+    barChartBtn.addEventListener('click', () => {
+        barChartBtn.classList.add('active-chart-btn');
+        pieChartBtn.classList.remove('active-chart-btn');
+        updateStatsChart('bar');
+    });
+
+    pieChartBtn.addEventListener('click', () => {
+        pieChartBtn.classList.add('active-chart-btn');
+        barChartBtn.classList.remove('active-chart-btn');
+        updateStatsChart('pie');
+    });
+    
+    function initializeStatsChart() {
+        const ctx = statsChartCanvas.getContext('2d');
+        statsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['الدخل', 'المصروفات'],
+                datasets: [{
+                    label: 'إجمالي المبلغ',
+                    data: [0, 0],
+                    backgroundColor: ['rgba(46, 204, 113, 0.7)', 'rgba(231, 76, 60, 0.7)'],
+                    borderColor: ['rgba(46, 204, 113, 1)', 'rgba(231, 76, 60, 1)'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function updateStatsChart(chartType = statsChart.config.type) {
+        const duration = statsDurationFilter.value;
+        const filteredTransactions = getFilteredTransactions(duration);
+
+        const totalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const totalExpenses = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        
+        statsChart.config.type = chartType;
+        if (chartType === 'pie') {
+            statsChart.data.labels = ['الدخل', 'المصروفات'];
+            statsChart.data.datasets[0].label = 'توزيع المبالغ';
+            statsChart.data.datasets[0].data = [totalIncome, totalExpenses];
+            statsChart.options.scales.y.display = false;
+        } else { // bar
+            statsChart.data.labels = ['الدخل', 'المصروفات'];
+            statsChart.data.datasets[0].label = 'إجمالي المبلغ';
+            statsChart.data.datasets[0].data = [totalIncome, totalExpenses];
+            statsChart.options.scales.y.display = true;
+        }
+        
+        statsChart.update();
+    }
+    
+    function renderTopTransactions() {
+        const duration = statsDurationFilter.value;
+        const filteredTransactions = getFilteredTransactions(duration);
+
+        const incomeTransactions = filteredTransactions.filter(t => t.type === 'income').sort((a, b) => b.amount - a.amount);
+        const expenseTransactions = filteredTransactions.filter(t => t.type === 'expense').sort((a, b) => b.amount - a.amount);
+        
+        topIncomeList.innerHTML = '';
+        topExpenseList.innerHTML = '';
+        
+        noTopIncomeMsg.classList.add('hidden');
+        noTopExpenseMsg.classList.add('hidden');
+
+        if (incomeTransactions.length === 0) {
+            noTopIncomeMsg.classList.remove('hidden');
+        } else {
+            incomeTransactions.slice(0, 5).forEach(t => {
+                const item = document.createElement('div');
+                item.className = 'top-transaction-item';
+                item.innerHTML = `
+                    <div class="details">
+                        <strong>${t.category}</strong>
+                        <span>${t.date}</span>
+                    </div>
+                    <span class="amount income-label">+${t.amount.toFixed(2)}</span>
+                `;
+                topIncomeList.appendChild(item);
+            });
+        }
+        
+        if (expenseTransactions.length === 0) {
+            noTopExpenseMsg.classList.remove('hidden');
+        } else {
+            expenseTransactions.slice(0, 5).forEach(t => {
+                const item = document.createElement('div');
+                item.className = 'top-transaction-item';
+                item.innerHTML = `
+                    <div class="details">
+                        <strong>${t.category}</strong>
+                        <span>${t.date}</span>
+                    </div>
+                    <span class="amount expense-label">-${t.amount.toFixed(2)}</span>
+                `;
+                topExpenseList.appendChild(item);
+            });
+        }
+    }
     
     manageUsersBtn.addEventListener('click', () => {
         usersModal.style.display = 'block';
+        userRoleFilter.value = 'all';
         renderUsersList();
     });
 
@@ -216,6 +459,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
         }
     });
+
+    userRoleFilter.addEventListener('change', renderUsersList);
 
     addUserForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -251,8 +496,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function renderUsersList() {
         const users = getUsers();
+        const selectedRole = userRoleFilter.value;
+        
+        const filteredUsers = selectedRole === 'all' ? users : users.filter(u => u.role === selectedRole);
+        
         usersListContainer.innerHTML = '';
-        users.forEach(user => {
+        if (filteredUsers.length === 0) {
+            usersListContainer.innerHTML = '<p class="no-users" style="text-align:center; padding: 20px;">لا يوجد مستخدمون بهذا الدور.</p>';
+            return;
+        }
+
+        filteredUsers.forEach(user => {
             const userCard = document.createElement('div');
             userCard.className = 'user-card';
             userCard.innerHTML = `
@@ -302,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
-
+    
     notificationsBtn.addEventListener('click', () => {
         renderPendingTransactions();
         messagesModal.style.display = 'block';
@@ -311,28 +565,34 @@ document.addEventListener('DOMContentLoaded', () => {
     messagesModalCloseBtn.addEventListener('click', () => {
         messagesModal.style.display = 'none';
     });
-    
+
     permissionsBtn.addEventListener('click', () => {
-        renderApprovedTransactions();
         permissionsModal.style.display = 'block';
+        approvedDurationFilter.value = 'current-month';
+        customDateFilter.classList.add('hidden');
+        renderApprovedTransactions();
     });
 
     permissionsModalCloseBtn.addEventListener('click', () => {
         permissionsModal.style.display = 'none';
     });
     
-    function updateNotificationBadge() {
-        const count = pendingTransactions.length;
-        if (count > 0) {
-            notificationBadge.textContent = count;
-            notificationBadge.classList.remove('hidden');
+    approvedDurationFilter.addEventListener('change', () => {
+        if (approvedDurationFilter.value === 'custom') {
+            customDateFilter.classList.remove('hidden');
         } else {
-            notificationBadge.classList.add('hidden');
+            customDateFilter.classList.add('hidden');
+            renderApprovedTransactions();
         }
-    }
+    });
+
+    approvedFromDate.addEventListener('change', renderApprovedTransactions);
+    approvedToDate.addEventListener('change', renderApprovedTransactions);
     
     function renderPendingTransactions() {
         pendingTransactionsContainer.innerHTML = '';
+        const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
+
         if (pendingTransactions.length === 0) {
             noPendingTransactionsMsg.classList.remove('hidden');
         } else {
@@ -341,6 +601,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isEdit = !!t.originalId;
                 const card = document.createElement('div');
                 card.className = `pending-card ${isEdit ? 'pending-edit-card' : ''}`;
+                
+                const actionsHTML = canApprove ? `
+                    <div class="pending-actions">
+                        <button class="action-btn income-btn approve-btn" data-id="${t.id}"><i class="fas fa-check"></i> موافقة</button>
+                        <button class="action-btn expense-btn reject-btn" data-id="${t.id}"><i class="fas fa-times"></i> رفض</button>
+                    </div>` : '';
+
                 card.innerHTML = `
                     <div class="card-details">
                         <p><strong>التاريخ:</strong> ${t.date}</p>
@@ -353,10 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${isEdit ? '<p class="status-note">طلب تعديل ينتظر الموافقة</p>' : '<p class="status-note">معاملة جديدة بانتظار الموافقة</p>'}
                         </div>
                     </div>
-                    <div class="pending-actions">
-                        <button class="action-btn income-btn approve-btn" data-id="${t.id}"><i class="fas fa-check"></i> موافقة</button>
-                        <button class="action-btn expense-btn reject-btn" data-id="${t.id}"><i class="fas fa-times"></i> رفض</button>
-                    </div>
+                    ${actionsHTML}
                 `;
                 pendingTransactionsContainer.appendChild(card);
             });
@@ -365,13 +629,48 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function renderApprovedTransactions() {
         approvedTransactionsContainer.innerHTML = '';
-        const approved = transactions.filter(t => t.approvedBy);
+        const allApproved = transactions.filter(t => t.approvedBy);
         
-        if (approved.length === 0) {
+        let filteredApproved = [];
+        const duration = approvedDurationFilter.value;
+        const today = new Date();
+
+        if (duration === 'all') {
+            filteredApproved = allApproved;
+        } else if (duration === 'current-month') {
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+            filteredApproved = allApproved.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
+        } else if (duration === 'last-month') {
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const firstDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
+            const lastDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+            filteredApproved = allApproved.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
+        } else if (duration === 'current-year') {
+            const currentYear = today.getFullYear();
+            filteredApproved = allApproved.filter(t => new Date(t.date).getFullYear() == currentYear);
+        } else if (duration === 'last-year') {
+            const lastYear = today.getFullYear() - 1;
+            filteredApproved = allApproved.filter(t => new Date(t.date).getFullYear() == lastYear);
+        } else if (duration === 'custom') {
+            const fromDate = approvedFromDate.value;
+            const toDate = approvedToDate.value;
+            if (fromDate && toDate) {
+                const from = new Date(fromDate);
+                const to = new Date(toDate);
+                to.setDate(to.getDate() + 1);
+                filteredApproved = allApproved.filter(t => {
+                    const transactionDate = new Date(t.date);
+                    return transactionDate >= from && transactionDate <= to;
+                });
+            }
+        }
+        
+        if (filteredApproved.length === 0) {
             noApprovedTransactionsMsg.classList.remove('hidden');
         } else {
             noApprovedTransactionsMsg.classList.add('hidden');
-            approved.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(t => {
+            filteredApproved.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(t => {
                 const card = document.createElement('div');
                 card.className = 'approved-card';
                 card.innerHTML = `
@@ -395,6 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
     pendingTransactionsContainer.addEventListener('click', (e) => {
         const approveBtn = e.target.closest('.approve-btn');
         const rejectBtn = e.target.closest('.reject-btn');
+        const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
+        
+        if (!canApprove) return;
+
         if (approveBtn) {
             const id = parseInt(approveBtn.dataset.id);
             const transactionToApprove = pendingTransactions.find(t => t.id === id);
@@ -406,15 +709,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (originalIndex !== -1) {
                         transactions[originalIndex] = {
                             ...transactions[originalIndex],
-                            date: transactionToApprove.date,
-                            category: transactionToApprove.category,
-                            amount: transactionToApprove.amount,
-                            fromTo: transactionToApprove.fromTo,
-                            note: transactionToApprove.note,
-                            type: transactionToApprove.type,
-                            isEdited: false, // Reset pending state
+                            date: transactionToApprove.date, category: transactionToApprove.category,
+                            amount: transactionToApprove.amount, fromTo: transactionToApprove.fromTo,
+                            note: transactionToApprove.note, type: transactionToApprove.type,
+                            isEdited: false,
                             approvedBy: { username: currentUser.username, description: rolesMap[currentUser.role] },
-                            // حفظ معلومات من قام بالتعديل
                             lastEditedBy: transactionToApprove.lastActionBy 
                         };
                     }
@@ -424,12 +723,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 pendingTransactions = pendingTransactions.filter(t => t.id !== id);
+                clearNotificationsForTransaction(id);
                 saveTransactions();
                 savePendingTransactions();
                 applyFilter();
                 updateSummary();
                 updateChart();
                 renderPendingTransactions();
+                updateNotificationBadge();
             }
         } else if (rejectBtn) {
             const id = parseInt(rejectBtn.dataset.id);
@@ -444,9 +745,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             pendingTransactions = pendingTransactions.filter(t => t.id !== id);
+            clearNotificationsForTransaction(id);
             savePendingTransactions();
             applyFilter();
             renderPendingTransactions();
+            updateNotificationBadge();
         }
     });
 
@@ -563,12 +866,11 @@ document.addEventListener('DOMContentLoaded', () => {
         balanceSpan.textContent = balance.toFixed(2);
         balanceSpan.style.color = balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     }
-    
+
     function createTransactionCard(transaction) {
         const transactionCard = document.createElement('div');
         let cardClass = `transaction-card ${transaction.type}-card`;
         
-        // الشرط الجديد لتلوين البطاقة باللون الأصفر
         if (transaction.lastEditedBy && transaction.lastEditedBy.role !== 'manager') {
             cardClass += ' edited-by-user';
         }
@@ -609,11 +911,10 @@ document.addEventListener('DOMContentLoaded', () => {
         transactionCard.dataset.id = transaction.id;
         return transactionCard;
     }
-
+    
     function updateTransactionsContainer(filteredTransactions, isGrouped = true) {
         transactionsContainer.innerHTML = '';
         
-        // Sort transactions by date descending
         const sortedTransactions = [...filteredTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         
         if (sortedTransactions.length === 0) {
@@ -662,7 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
-    
+
     function appendSummary(transactionsToSummarize, key = null, duration = null) {
         let title, className;
         let totalIncome = 0;
@@ -705,34 +1006,24 @@ document.addEventListener('DOMContentLoaded', () => {
         transactionsContainer.appendChild(summaryDiv);
     }
     
-    function filterByToday() {
-        const today = new Date().toISOString().split('T')[0];
-        return transactions.filter(t => t.date === today);
-    }
-
-    function filterByCurrentMonth() {
+    function getFilteredTransactions(duration) {
         const today = new Date();
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
-        return transactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
-    }
-
-    function filterByLastMonth() {
-        const today = new Date();
-        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const firstDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
-        const lastDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
-        return transactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
-    }
-    
-    function filterByCurrentYear() {
-        const currentYear = new Date().getFullYear();
-        return transactions.filter(t => new Date(t.date).getFullYear() == currentYear);
-    }
-
-    function filterByLastYear() {
-        const lastYear = new Date().getFullYear() - 1;
-        return transactions.filter(t => new Date(t.date).getFullYear() == lastYear);
+        if (duration === 'current-month') {
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+            return transactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
+        } else if (duration === 'last-month') {
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const firstDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
+            const lastDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+            return transactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
+        } else if (duration === 'current-year') {
+            const currentYear = today.getFullYear();
+            return transactions.filter(t => new Date(t.date).getFullYear() == currentYear);
+        } else if (duration === 'last-year') {
+            const lastYear = today.getFullYear() - 1;
+            return transactions.filter(t => new Date(t.date).getFullYear() == lastYear);
+        }
     }
 
     function applyFilter() {
@@ -745,22 +1036,17 @@ document.addEventListener('DOMContentLoaded', () => {
         let filtered = [];
         
         if (duration === 'today') {
-            filtered = filterByToday();
-        } else if (duration === 'current-month') {
-            filtered = filterByCurrentMonth();
-        } else if (duration === 'last-month') {
-            filtered = filterByLastMonth();
-        } else if (duration === 'current-year') {
-            filtered = filterByCurrentYear();
-        } else if (duration === 'last-year') {
-            filtered = filterByLastYear();
+            const today = new Date().toISOString().split('T')[0];
+            filtered = transactions.filter(t => t.date === today);
+        } else {
+            filtered = getFilteredTransactions(duration);
         }
         
         updateTransactionsContainer(filtered);
     }
 
     durationFilter.addEventListener('change', applyFilter);
-
+    
     addIncomeBtn.addEventListener('click', () => {
         modal.style.display = 'block';
         modalTitle.textContent = 'إضافة دخل';
@@ -785,13 +1071,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.addEventListener('click', (e) => {
-        if (e.target === modal || e.target === usersModal || e.target === permissionsModal || e.target === messagesModal || e.target === backupModal || e.target === advancedSearchModal) {
-            modal.style.display = 'none';
-            usersModal.style.display = 'none';
-            permissionsModal.style.display = 'none';
-            messagesModal.style.display = 'none';
-            backupModal.style.display = 'none';
-            advancedSearchModal.style.display = 'none';
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
             transactionForm.reset();
             addUserForm.classList.add('hidden');
             showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
@@ -822,43 +1103,38 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentUserInfo = { username: currentUser.username, description: rolesMap[currentUser.role], role: currentUser.role };
 
         if (transactionId) {
-            // Logic for editing an existing transaction
             if (needsApprovalForEdit) {
                 const editedTransaction = {
-                    id: Date.now(),
-                    originalId: parseInt(transactionId),
+                    id: Date.now(), originalId: parseInt(transactionId),
                     date, category, amount, fromTo, note, type,
                     lastActionBy: currentUserInfo
                 };
                 pendingTransactions.push(editedTransaction);
+                createNotificationsForPendingTransaction(editedTransaction);
                 savePendingTransactions();
+                
                 const originalTransaction = transactions.find(t => t.id == transactionId);
-                if (originalTransaction) {
-                    originalTransaction.isEdited = true;
-                }
+                if (originalTransaction) originalTransaction.isEdited = true;
                 saveTransactions();
                 alert('تم إرسال طلب التعديل للموافقة.');
             } else {
                 const index = transactions.findIndex(t => t.id == transactionId);
                 if (index !== -1) {
                     transactions[index] = {
-                        ...transactions[index],
-                        date, category, amount, fromTo, note, type,
-                        lastActionBy: currentUserInfo,
-                        lastEditedBy: currentUserInfo
+                        ...transactions[index], date, category, amount, fromTo, note, type,
+                        lastActionBy: currentUserInfo, lastEditedBy: currentUserInfo
                     };
                 }
                 saveTransactions();
             }
         } else {
-            // Logic for adding a new transaction
             const newTransaction = {
-                id: Date.now(),
-                date, category, amount, fromTo, note, type,
+                id: Date.now(), date, category, amount, fromTo, note, type,
                 lastActionBy: currentUserInfo
             };
             if (needsApprovalForNew) {
                 pendingTransactions.push(newTransaction);
+                createNotificationsForPendingTransaction(newTransaction);
                 savePendingTransactions();
                 alert('تم إرسال المعاملة الجديدة للموافقة.');
             } else {
@@ -870,9 +1146,9 @@ document.addEventListener('DOMContentLoaded', () => {
         applyFilter();
         updateSummary();
         updateChart();
+        updateNotificationBadge();
         modal.style.display = 'none';
     });
-
 
     transactionsContainer.addEventListener('click', (e) => {
         const editBtn = e.target.closest('.edit-btn');
@@ -904,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-    
+
     let startX = 0;
     let currentCard = null;
 
@@ -969,8 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
-    
-    // --- Advanced Search Logic ---
+
     advancedSearchBtn.addEventListener('click', () => {
         advancedSearchModal.style.display = 'block';
     });
@@ -1022,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (searchToDate) {
                 const toDate = new Date(searchToDate);
-                toDate.setDate(toDate.getDate() + 1); // لتضمين اليوم الأخير
+                toDate.setDate(toDate.getDate() + 1);
                 if (transactionDate > toDate) {
                     dateMatch = false;
                 }
@@ -1034,12 +1309,10 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTransactionsContainer(filtered, false);
     }
     
-    // Clicking the badge clears the search
     searchActiveBadge.addEventListener('click', () => {
         clearSearchBtn.click();
     });
 
-    // --- Backup and Restore Logic ---
     backupBtn.addEventListener('click', () => {
         backupModal.style.display = 'block';
     });
@@ -1053,6 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
             users: getUsers(),
             transactions: transactions,
             pendingTransactions: pendingTransactions,
+            notifications: getNotifications(),
             backupDate: new Date().toISOString()
         };
         const jsonString = JSON.stringify(backupData, null, 2);
@@ -1081,11 +1355,12 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (e) => {
             try {
                 const restoredData = JSON.parse(e.target.result);
-                if (restoredData && restoredData.users && restoredData.transactions && restoredData.pendingTransactions) {
+                if (restoredData && restoredData.users && restoredData.transactions) {
                     if (confirm('هل أنت متأكد من أنك تريد استعادة هذه البيانات؟ سيتم الكتابة فوق جميع البيانات الحالية.')) {
                         saveUsers(restoredData.users);
                         localStorage.setItem('transactions', JSON.stringify(restoredData.transactions));
-                        localStorage.setItem('pendingTransactions', JSON.stringify(restoredData.pendingTransactions));
+                        localStorage.setItem('pendingTransactions', JSON.stringify(restoredData.pendingTransactions || []));
+                        localStorage.setItem('notifications', JSON.stringify(restoredData.notifications || []));
                         alert('تمت استعادة البيانات بنجاح! سيتم إعادة تحميل الصفحة.');
                         window.location.reload();
                     }
@@ -1102,15 +1377,11 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         reader.readAsText(file);
     });
-
-    // --- Initial Load ---
+    
     if (!localStorage.getItem('users')) {
         saveUsers(getInitialUsers());
     }
-    if (!localStorage.getItem('transactions')) {
-        saveTransactions();
-    }
-    if (!localStorage.getItem('pendingTransactions')) {
-        savePendingTransactions();
-    }
+    
+    // Check login status on page load
+    checkLoginStatus();
 });
