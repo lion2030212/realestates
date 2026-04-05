@@ -1,4 +1,8 @@
-document.addEventListener('DOMContentLoaded', () => {
+// A helpful AI assistant built by Google.
+// Refactored JavaScript code to use localStorage instead of a simulated backend API.
+
+Document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM Element Selection ---
     const loginScreen = document.getElementById('login-screen');
     const mainApp = document.getElementById('main-app');
     const loginForm = document.getElementById('login-form');
@@ -37,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const newPasswordInput = document.getElementById('new-password');
     const newUserDescriptionInput = document.getElementById('new-user-description');
     const saveUserBtn = document.getElementById('save-user-btn');
+    const newUserIdInput = document.getElementById('new-user-id');
 
     const logoutBtn = document.getElementById('logout-btn');
     const userGreetingSpan = document.getElementById('user-greeting');
@@ -98,14 +103,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const noTopExpenseMsg = document.getElementById('no-top-expense');
     let statsChart;
 
+    // --- Application State ---
     let currentUser = null;
     let isSearchActive = false;
     let transactions = [];
     let pendingTransactions = [];
+    let users = [];
     let myChart;
     
+    // --- Constants ---
     const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-    
     const rolesMap = {
         'manager': 'مدير النظام',
         'admin': 'مشرف محترف',
@@ -115,28 +122,300 @@ document.addEventListener('DOMContentLoaded', () => {
         'viewer': 'القارئ'
     };
     
+    // --- Local Storage Keys ---
+    const LS_TRANSACTIONS = 'finance_transactions';
+    const LS_PENDING = 'finance_pending_transactions';
+    const LS_USERS = 'finance_users';
+
+    // --- Utility Functions ---
+
     function formatNumber(num) {
         return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    async function fetchAPI(endpoint, method = 'GET', data = null) {
-        const options = {
-            method: method,
-            headers: { 'Content-Type': 'application/json' }
-        };
-        if (data) {
-            options.body = JSON.stringify(data);
-        }
+    function generateUniqueId() {
+        return Date.now() + Math.random().toString(36).substring(2, 9);
+    }
+    
+    function saveToLocalStorage(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+    
+    function loadFromLocalStorage(key, defaultValue = []) {
+        const stored = localStorage.getItem(key);
         try {
-            const response = await fetch(`api/${endpoint}`, options);
-            return await response.json();
-        } catch (error) {
-            console.error('API call failed:', error);
-            return { success: false, message: 'حدث خطأ في الاتصال بالخادم.' };
+            return stored ? JSON.parse(stored) : defaultValue;
+        } catch (e) {
+            console.error(`Error parsing localStorage key: ${key}`, e);
+            return defaultValue;
         }
     }
 
-    async function initApp(user) {
+    // --- Local Storage Initialization and Data Sync ---
+
+    function initializeLocalStorage() {
+        // Ensure initial users are set if the user list is empty or doesn't exist.
+        if (!localStorage.getItem(LS_USERS) || loadFromLocalStorage(LS_USERS).length === 0) {
+            // Initial Users setup (Manager and a few others)
+            const initialUsers = [
+                { id: generateUniqueId(), username: 'manager', password: 'password123', role: 'manager', description: 'مدير النظام الرئيسي' },
+                { id: generateUniqueId(), username: 'admin', password: 'password123', role: 'admin', description: 'مشرف محترف للمالية' },
+                { id: generateUniqueId(), username: 'employee1', password: 'password123', role: 'employee', description: 'موظف مدخل بيانات' }
+            ];
+            saveToLocalStorage(LS_USERS, initialUsers);
+        }
+        users = loadFromLocalStorage(LS_USERS);
+        transactions = loadFromLocalStorage(LS_TRANSACTIONS);
+        pendingTransactions = loadFromLocalStorage(LS_PENDING);
+    }
+
+    // --- Local Storage API Mocking Functions (Replacing fetchAPI) ---
+
+    async function loginUser(username, password) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+        const user = users.find(u => u.username === username && u.password === password);
+        if (user) {
+            return { success: true, user: { id: user.id, username: user.username, role: user.role, description: user.description || rolesMap[user.role] } };
+        }
+        return { success: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
+    }
+
+    async function getUsers() {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return { success: true, users: users.map(u => ({...u, description: u.description || rolesMap[u.role]})) };
+    }
+
+    async function addUser(data) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (users.some(u => u.username === data.username)) {
+            return { success: false, message: 'اسم المستخدم موجود بالفعل.' };
+        }
+        const newUser = {
+            id: generateUniqueId(),
+            username: data.username,
+            password: data.password, // In a real app, this should be hashed
+            role: data.role,
+            description: data.description || rolesMap[data.role]
+        };
+        users.push(newUser);
+        saveToLocalStorage(LS_USERS, users);
+        return { success: true, message: 'تمت إضافة المستخدم بنجاح.' };
+    }
+    
+    async function editUser(data) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const index = users.findIndex(u => u.id == data.id);
+        if (index !== -1) {
+            const user = users[index];
+            user.username = data.username;
+            user.role = data.role;
+            user.description = data.description;
+            if (data.password && data.password !== user.password) {
+                 user.password = data.password; // Update password only if provided
+            }
+            users[index] = user;
+            saveToLocalStorage(LS_USERS, users);
+            // If the current user's role was edited, update session (FIX APPLIED HERE)
+            if (currentUser && currentUser.id == data.id) {
+                currentUser.role = data.role;
+                currentUser.username = data.username;
+                currentUser.description = data.description;
+                sessionStorage.setItem('loggedInUser', JSON.stringify(currentUser));
+                initApp(currentUser, false); // Re-initialize permissions without full data fetch
+            }
+            return { success: true, message: 'تم تحديث بيانات المستخدم بنجاح.' };
+        }
+        return { success: false, message: 'المستخدم غير موجود.' };
+    }
+
+    async function deleteUser(id) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const initialLength = users.length;
+        users = users.filter(u => u.id != id);
+        if (users.length < initialLength) {
+            saveToLocalStorage(LS_USERS, users);
+            // Also remove all transactions and pending by this user for data integrity in this local mock
+            transactions = transactions.filter(t => t.added_by_id != id);
+            pendingTransactions = pendingTransactions.filter(t => t.added_by_id != id);
+            saveToLocalStorage(LS_TRANSACTIONS, transactions);
+            saveToLocalStorage(LS_PENDING, pendingTransactions);
+            return { success: true, message: 'تم حذف المستخدم بنجاح.' };
+        }
+        return { success: false, message: 'المستخدم غير موجود.' };
+    }
+
+    function getFullUserData(userId) {
+        const user = users.find(u => u.id === userId);
+        return user ? { username: user.username, description: user.description || rolesMap[user.role] } : { username: 'مستخدم غير معروف', description: 'غير معروف' };
+    }
+    
+    function enhanceTransaction(t) {
+        const addedBy = getFullUserData(t.added_by_id);
+        const approvedBy = t.approved_by_id ? getFullUserData(t.approved_by_id) : {};
+        const lastEditedBy = t.last_edited_by_id ? getFullUserData(t.last_edited_by_id) : {};
+        
+        return {
+            ...t,
+            added_by_username: addedBy.username,
+            added_by_description: addedBy.description,
+            approved_by_username: approvedBy.username,
+            approved_by_description: approvedBy.description,
+            last_edited_by_username: lastEditedBy.username,
+            edited_by_description: lastEditedBy.description // Naming convention from original code
+        };
+    }
+
+    async function getTransactions() {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return { success: true, transactions: transactions.map(enhanceTransaction) };
+    }
+
+    async function getPendingTransactions() {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return { success: true, pending: pendingTransactions.map(enhanceTransaction) };
+    }
+
+    async function addTransaction(data) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const isManager = currentUser.role === 'manager';
+        const isApproved = isManager;
+        
+        const newTransaction = {
+            id: generateUniqueId(),
+            type: data.type,
+            date: data.date,
+            category: data.category,
+            amount: data.amount,
+            fromTo: data.fromTo,
+            note: data.note,
+            added_by_id: currentUser.id,
+            approved_by_id: isApproved ? currentUser.id : null,
+            last_edited_by_id: null,
+            original_transaction_id: null, // For edit requests
+            created_at: new Date().toISOString()
+        };
+        
+        if (isApproved) {
+            transactions.push(newTransaction);
+            saveToLocalStorage(LS_TRANSACTIONS, transactions);
+            return { success: true, message: 'تمت إضافة المعاملة والموافقة عليها بنجاح.' };
+        } else {
+            pendingTransactions.push(newTransaction);
+            saveToLocalStorage(LS_PENDING, pendingTransactions);
+            return { success: true, message: 'تم إرسال المعاملة للموافقة.' };
+        }
+    }
+
+    async function editTransaction(data) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const isManagerOrAdmin = ['manager', 'admin'].includes(currentUser.role);
+        
+        const existingTransactionIndex = transactions.findIndex(t => t.id == data.id);
+        const transactionToEdit = transactions[existingTransactionIndex];
+
+        if (!transactionToEdit) {
+            return { success: false, message: 'المعاملة غير موجودة.' };
+        }
+        
+        // Users (employee, editor) must submit an edit request (pending transaction)
+        if (!isManagerOrAdmin) {
+            const editRequest = {
+                ...transactionToEdit,
+                id: generateUniqueId(), // New ID for the pending request
+                type: data.type,
+                date: data.date,
+                category: data.category,
+                amount: data.amount,
+                fromTo: data.fromTo,
+                note: data.note,
+                approved_by_id: null, // Reset approval
+                original_transaction_id: data.id, // Link to the original
+                last_edited_by_id: currentUser.id,
+                created_at: new Date().toISOString() // Ensure created_at for sorting pending
+            };
+            
+            pendingTransactions.push(editRequest);
+            saveToLocalStorage(LS_PENDING, pendingTransactions);
+            return { success: true, message: 'تم إرسال طلب تعديل المعاملة للموافقة.' };
+        } else {
+            // Manager/Admin can directly edit
+            transactionToEdit.type = data.type;
+            transactionToEdit.date = data.date;
+            transactionToEdit.category = data.category;
+            transactionToEdit.amount = data.amount;
+            transactionToEdit.fromTo = data.fromTo;
+            transactionToEdit.note = data.note;
+            transactionToEdit.last_edited_by_id = currentUser.id;
+            transactions[existingTransactionIndex] = transactionToEdit;
+            saveToLocalStorage(LS_TRANSACTIONS, transactions);
+            return { success: true, message: 'تم تعديل المعاملة بنجاح.' };
+        }
+    }
+
+    async function deleteTransaction(id) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const initialLength = transactions.length;
+        transactions = transactions.filter(t => t.id != id);
+        if (transactions.length < initialLength) {
+            saveToLocalStorage(LS_TRANSACTIONS, transactions);
+            return { success: true, message: 'تم حذف المعاملة بنجاح.' };
+        }
+        return { success: false, message: 'المعاملة غير موجودة.' };
+    }
+
+    async function approveTransaction(id) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const index = pendingTransactions.findIndex(t => t.id == id);
+        if (index === -1) return { success: false, message: 'طلب المعاملة غير موجود.' };
+        
+        const pendingT = pendingTransactions[index];
+        pendingT.approved_by_id = currentUser.id;
+        
+        if (pendingT.original_transaction_id) {
+            // This is an edit request
+            const originalIndex = transactions.findIndex(t => t.id == pendingT.original_transaction_id);
+            if (originalIndex !== -1) {
+                // Apply the changes to the original transaction
+                const originalT = transactions[originalIndex];
+                originalT.type = pendingT.type;
+                originalT.date = pendingT.date;
+                originalT.category = pendingT.category;
+                originalT.amount = pendingT.amount;
+                originalT.fromTo = pendingT.fromTo;
+                originalT.note = pendingT.note;
+                originalT.last_edited_by_id = pendingT.last_edited_by_id; // Keep the ID of the user who requested the edit
+                transactions[originalIndex] = originalT;
+            }
+        } else {
+            // New transaction - Add to transactions list
+            // We should strip the temporary pending ID and use the full object including added_by_id
+            const approvedTransaction = { ...pendingT, approved_by_id: currentUser.id };
+            transactions.push(approvedTransaction);
+        }
+        
+        // Remove from pending
+        pendingTransactions.splice(index, 1);
+        saveToLocalStorage(LS_TRANSACTIONS, transactions);
+        saveToLocalStorage(LS_PENDING, pendingTransactions);
+        
+        return { success: true, message: 'تمت الموافقة على المعاملة بنجاح.' };
+    }
+
+    async function rejectTransaction(id) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const initialLength = pendingTransactions.length;
+        pendingTransactions = pendingTransactions.filter(t => t.id != id);
+        if (pendingTransactions.length < initialLength) {
+            saveToLocalStorage(LS_PENDING, pendingTransactions);
+            return { success: true, message: 'تم رفض طلب المعاملة بنجاح.' };
+        }
+        return { success: false, message: 'طلب المعاملة غير موجود.' };
+    }
+
+
+    // --- Core Application Logic (Refactored to use local functions) ---
+
+    async function initApp(user, fetchData = true) {
         currentUser = user;
         sessionStorage.setItem('loggedInUser', JSON.stringify(currentUser));
         loginScreen.classList.add('hidden');
@@ -152,7 +431,10 @@ document.addEventListener('DOMContentLoaded', () => {
         manageUsersBtn.classList.toggle('hidden', !isManager);
         permissionsBtn.classList.toggle('hidden', !isManager);
         backupBtn.classList.toggle('hidden', !isManager);
-        document.querySelector('#advanced-search-modal .manager-only').classList.toggle('hidden', !isManager);
+        const managerOnlySearchElement = document.querySelector('#advanced-search-modal .manager-only');
+        if (managerOnlySearchElement) {
+            managerOnlySearchElement.classList.toggle('hidden', !isManager);
+        }
 
         addIncomeBtn.classList.toggle('hidden', !canAdd);
         addExpenseBtn.classList.toggle('hidden', !canAdd);
@@ -160,7 +442,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         durationFilter.value = 'current-month';
         
-        await fetchAllData();
+        if (fetchData) {
+            await fetchAllData();
+        }
         applyFilter();
         updateSummary();
         initializeChart();
@@ -169,18 +453,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchAllData() {
-        const transactionsResponse = await fetchAPI('transactions.php?action=get');
+        const transactionsResponse = await getTransactions();
         if (transactionsResponse.success) {
             transactions = transactionsResponse.transactions;
         }
 
-        const pendingResponse = await fetchAPI('transactions.php?action=pending');
+        const pendingResponse = await getPendingTransactions();
         if (pendingResponse.success) {
             pendingTransactions = pendingResponse.pending;
         }
     }
 
     function checkLoginStatus() {
+        initializeLocalStorage();
         const storedUser = sessionStorage.getItem('loggedInUser');
         if (storedUser) {
             try {
@@ -208,7 +493,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = usernameInput.value;
         const password = passwordInput.value;
         
-        const response = await fetchAPI('login.php', 'POST', { username, password });
+        // Replaced fetchAPI('login.php', 'POST', { username, password })
+        const response = await loginUser(username, password);
         
         if (response.success) {
             loginAttempts = 0;
@@ -241,15 +527,16 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebar.classList.remove('show');
     });
 
+    // --- Sidebar Toggles ---
     sidebarToggleBtn.addEventListener('click', () => sidebar.classList.toggle('show'));
     sidebarCloseBtn.addEventListener('click', () => sidebar.classList.remove('show'));
-    
     document.addEventListener('click', (e) => {
         if (sidebar.classList.contains('show') && !sidebar.contains(e.target) && !sidebarToggleBtn.contains(e.target)) {
             sidebar.classList.remove('show');
         }
     });
     
+    // --- Stats Modal Logic ---
     statsBtn.addEventListener('click', async () => {
         statsModal.style.display = 'block';
         if (!statsChart) initializeStatsChart();
@@ -331,27 +618,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- User Management Logic ---
     manageUsersBtn.addEventListener('click', async () => {
         usersModal.style.display = 'block';
         userRoleFilter.value = 'all';
         await renderUsersList();
     });
-    usersModalCloseBtn.addEventListener('click', () => { usersModal.style.display = 'none'; addUserForm.classList.add('hidden'); showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد'; addUserForm.reset(); document.getElementById('new-user-id').value = ''; });
+    usersModalCloseBtn.addEventListener('click', () => { usersModal.style.display = 'none'; addUserForm.classList.add('hidden'); showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد'; addUserForm.reset(); newUserIdInput.value = ''; });
+    
     showAddUserFormBtn.addEventListener('click', () => {
         addUserForm.classList.toggle('hidden');
         if (!addUserForm.classList.contains('hidden')) {
             showAddUserFormBtn.textContent = 'إلغاء';
             saveUserBtn.textContent = 'إضافة';
             addUserForm.reset();
-            document.getElementById('new-user-id').value = '';
+            newUserIdInput.value = '';
         } else {
             showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
         }
     });
+
     userRoleFilter.addEventListener('change', renderUsersList);
+
     addUserForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const newUserId = document.getElementById('new-user-id').value;
+        const newUserId = newUserIdInput.value;
         const role = newUserRoleInput.value;
         const username = newUsernameInput.value;
         const password = newPasswordInput.value;
@@ -359,14 +650,20 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let response;
         if (newUserId) {
-            response = await fetchAPI('users.php?action=edit', 'POST', { id: newUserId, username, password, role, description });
+            // Replaced fetchAPI('users.php?action=edit', 'POST', { id: newUserId, ... })
+            response = await editUser({ id: newUserId, username, password, role, description });
         } else {
-            response = await fetchAPI('users.php?action=add', 'POST', { username, password, role, description });
+            // Replaced fetchAPI('users.php?action=add', 'POST', { ... })
+            if (!password) {
+                alert('الرجاء إدخال كلمة مرور للمستخدم الجديد.');
+                return;
+            }
+            response = await addUser({ username, password, role, description });
         }
         
         alert(response.message);
         if (response.success) {
-            renderUsersList();
+            await renderUsersList();
             addUserForm.classList.add('hidden');
             addUserForm.reset();
             showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
@@ -374,15 +671,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     async function renderUsersList() {
-        const response = await fetchAPI('users.php?action=get');
+        // Replaced fetchAPI('users.php?action=get')
+        const response = await getUsers();
         if (!response.success) {
             usersListContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
             return;
         }
         
-        const users = response.users;
+        const usersData = response.users;
         const selectedRole = userRoleFilter.value;
-        const filteredUsers = selectedRole === 'all' ? users : users.filter(u => u.role === selectedRole);
+        const filteredUsers = selectedRole === 'all' ? usersData : usersData.filter(u => u.role === selectedRole);
         
         usersListContainer.innerHTML = '';
         if (filteredUsers.length === 0) {
@@ -395,27 +693,27 @@ document.addEventListener('DOMContentLoaded', () => {
             userCard.className = 'user-card';
             userCard.innerHTML = `
                 <div class="user-info-text">
-                    <h4>${user.username}</h4>
+                    <h4>${user.username} ${user.id == currentUser.id ? '(أنت)' : ''}</h4>
                     <p><strong>الدور:</strong> ${rolesMap[user.role]}</p>
                     <p><strong>الوصف:</strong> ${user.description || 'لا يوجد'}</p>
                 </div>
                 <div class="user-actions">
-                    <button class="action-btn edit-user-btn" data-id="${user.id}"><i class="fas fa-edit"></i> تعديل</button>
-                    <button class="action-btn delete-user-btn" data-id="${user.id}"><i class="fas fa-trash-alt"></i> حذف</button>
+                    <button class="action-btn edit-user-btn" data-id="${user.id}" ${user.id == currentUser.id ? 'disabled title="لا يمكنك تعديل دورك/حسابك من هنا"' : ''}><i class="fas fa-edit"></i> تعديل</button>
+                    <button class="action-btn delete-user-btn" data-id="${user.id}" ${user.id == currentUser.id ? 'disabled title="لا يمكنك حذف حسابك أثناء تسجيل الدخول"' : ''}><i class="fas fa-trash-alt"></i> حذف</button>
                 </div>
             `;
             usersListContainer.appendChild(userCard);
         });
 
-        document.querySelectorAll('.edit-user-btn').forEach(btn => {
+        document.querySelectorAll('.edit-user-btn:not([disabled])').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const userId = e.target.closest('button').dataset.id;
-                const userToEdit = filteredUsers.find(u => u.id == userId);
+                const userToEdit = users.find(u => u.id == userId);
                 if (userToEdit) {
-                    document.getElementById('new-user-id').value = userToEdit.id;
+                    newUserIdInput.value = userToEdit.id;
                     newUserRoleInput.value = userToEdit.role;
                     newUsernameInput.value = userToEdit.username;
-                    newPasswordInput.value = userToEdit.password;
+                    newPasswordInput.value = ''; // Don't pre-fill password for security
                     newUserDescriptionInput.value = userToEdit.description;
                     addUserForm.classList.remove('hidden');
                     saveUserBtn.textContent = 'حفظ التعديل';
@@ -424,20 +722,27 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+        document.querySelectorAll('.delete-user-btn:not([disabled])').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const userId = e.target.closest('button').dataset.id;
-                if (confirm('هل أنت متأكد من حذف هذا المستخدم؟')) {
-                    const response = await fetchAPI('users.php?action=delete', 'POST', { id: userId });
+                if (confirm('هل أنت متأكد من حذف هذا المستخدم؟ سيتم أيضًا حذف جميع معاملاته المعلقة والمعتمدة.')) {
+                    // Replaced fetchAPI('users.php?action=delete', 'POST', { id: userId })
+                    const response = await deleteUser(userId);
                     alert(response.message);
                     if (response.success) {
                         await renderUsersList();
+                        // Re-fetch transactions after user deletion (which also deletes their transactions)
+                        await fetchAllData(); 
+                        applyFilter();
+                        updateSummary();
+                        updateChart();
                     }
                 }
             });
         });
     }
 
+    // --- Notifications/Pending Transactions Logic ---
     notificationsBtn.addEventListener('click', () => {
         renderPendingTransactions();
         messagesModal.style.display = 'block';
@@ -445,7 +750,8 @@ document.addEventListener('DOMContentLoaded', () => {
     messagesModalCloseBtn.addEventListener('click', () => messagesModal.style.display = 'none');
 
     async function renderPendingTransactions() {
-        const response = await fetchAPI('transactions.php?action=pending');
+        // Replaced fetchAPI('transactions.php?action=pending')
+        const response = await getPendingTransactions();
         if (!response.success) {
             pendingTransactionsContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
             return;
@@ -458,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noPendingTransactionsMsg.classList.remove('hidden');
         } else {
             noPendingTransactionsMsg.classList.add('hidden');
-            pendingTransactions.forEach(t => {
+            pendingTransactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach(t => {
                 const isEdit = !!t.original_transaction_id;
                 const card = document.createElement('div');
                 card.className = `pending-card ${isEdit ? 'pending-edit-card' : ''}`;
@@ -478,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p><strong>ملاحظة:</strong> ${t.note || 'لا توجد'}</p>
                         <div class="card-footer">
                             <p><strong>بواسطة:</strong> ${t.added_by_description} (${t.added_by_username})</p>
-                            ${isEdit ? '<p class="status-note">طلب تعديل ينتظر الموافقة</p>' : '<p class="status-note">معاملة جديدة بانتظار الموافقة</p>'}
+                            ${isEdit ? `<p class="status-note">طلب تعديل بواسطة: ${t.edited_by_description} (${t.last_edited_by_username})</p>` : '<p class="status-note">معاملة جديدة بانتظار الموافقة</p>'}
                         </div>
                     </div>
                     ${actionsHTML}
@@ -494,8 +800,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const rejectBtn = e.target.closest('.reject-btn');
         
         if (approveBtn) {
-            const id = parseInt(approveBtn.dataset.id);
-            const response = await fetchAPI('transactions.php?action=approve', 'POST', { id });
+            const id = approveBtn.dataset.id;
+            // Replaced fetchAPI('transactions.php?action=approve', 'POST', { id })
+            const response = await approveTransaction(id);
             alert(response.message);
             if(response.success) {
                 await fetchAllData();
@@ -505,8 +812,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderPendingTransactions();
             }
         } else if (rejectBtn) {
-            const id = parseInt(rejectBtn.dataset.id);
-            const response = await fetchAPI('transactions.php?action=reject', 'POST', { id });
+            const id = rejectBtn.dataset.id;
+            // Replaced fetchAPI('transactions.php?action=reject', 'POST', { id })
+            const response = await rejectTransaction(id);
             alert(response.message);
             if(response.success) {
                 await fetchAllData();
@@ -519,7 +827,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateNotificationBadge() {
         if (!currentUser) return;
         
-        const count = pendingTransactions.filter(t => ['manager', 'admin', 'editor'].includes(currentUser.role)).length;
+        // Only show badge if the user has permission to approve
+        const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
+        const count = canApprove ? pendingTransactions.length : 0;
+        
         if (count > 0) {
             notificationBadge.textContent = count;
             notificationBadge.classList.remove('hidden');
@@ -528,6 +839,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- Permissions (Approved Transactions) Logic ---
     permissionsBtn.addEventListener('click', async () => {
         permissionsModal.style.display = 'block';
         approvedDurationFilter.value = 'current-month';
@@ -547,13 +859,14 @@ document.addEventListener('DOMContentLoaded', () => {
     approvedToDate.addEventListener('change', renderApprovedTransactions);
     
     async function renderApprovedTransactions() {
-        const response = await fetchAPI('transactions.php?action=get');
+        // Replaced fetchAPI('transactions.php?action=get')
+        const response = await getTransactions();
         if (!response.success) {
             approvedTransactionsContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
             return;
         }
 
-        const allApproved = response.transactions.filter(t => t.approved_by_username);
+        const allApproved = response.transactions.filter(t => t.approved_by_id); // Filter by existing approved_by_id
         let filteredApproved = [];
         const duration = approvedDurationFilter.value;
         const today = new Date();
@@ -581,10 +894,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fromDate && toDate) {
                 const from = new Date(fromDate);
                 const to = new Date(toDate);
-                to.setDate(to.getDate() + 1);
+                to.setDate(to.getDate() + 1); // To include the 'toDate' fully
                 filteredApproved = allApproved.filter(t => {
                     const transactionDate = new Date(t.date);
-                    return transactionDate >= from && transactionDate <= to;
+                    return transactionDate >= from && transactionDate < to;
                 });
             }
         }
@@ -615,6 +928,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- Chart Logic ---
     function initializeChart() {
         const ctx = chartCanvas.getContext('2d');
         if (myChart) myChart.destroy();
@@ -631,7 +945,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateChart() {
         const incomeData = {};
         const expenseData = {};
-        const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Only use approved transactions
+        const approvedTransactions = transactions.filter(t => t.approved_by_id);
+        const sortedTransactions = [...approvedTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
         
         sortedTransactions.forEach(t => {
             let key;
@@ -653,10 +969,18 @@ document.addEventListener('DOMContentLoaded', () => {
             allMonths = allMonths.slice(-6);
         }
 
+        const labels = allMonths.map(key => {
+            if (key.includes('-')) {
+                const parts = key.split('-');
+                return monthNames[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
+            }
+            return key;
+        });
+
         const incomeValues = allMonths.map(month => incomeData[month] || 0);
         const expenseValues = allMonths.map(month => expenseData[month] || 0);
 
-        myChart.data.labels = allMonths;
+        myChart.data.labels = labels;
         myChart.data.datasets[0].data = incomeValues;
         myChart.data.datasets[1].data = expenseValues;
         myChart.update();
@@ -667,9 +991,12 @@ document.addEventListener('DOMContentLoaded', () => {
     chartFilterYearlyBtn.addEventListener('click', () => { chartFilterType = 'yearly'; chartOptions.classList.add('hidden'); chartFilterYearlyBtn.classList.add('active'); chartFilterMonthlyBtn.classList.remove('active'); updateChart(); });
     chartFilterMonthlyBtn.classList.add('active');
 
+    // --- Summary Logic ---
     function updateSummary() {
-        let totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
-        let totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        // Only count approved transactions for the main summary
+        const approvedTransactions = transactions.filter(t => t.approved_by_id);
+        let totalIncome = approvedTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        let totalExpenses = approvedTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
         const balance = totalIncome - totalExpenses;
 
         totalIncomeSpan.textContent = formatNumber(totalIncome);
@@ -678,11 +1005,17 @@ document.addEventListener('DOMContentLoaded', () => {
         balanceSpan.style.color = balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     }
 
+    // --- Transaction Card Rendering ---
     function createTransactionCard(transaction) {
         const transactionCard = document.createElement('div');
         let cardClass = `transaction-card ${transaction.type}-card`;
         
-        if (transaction.last_edited_by_username && !['manager', 'admin'].includes(rolesMap[transaction.last_edited_by_username])) {
+        // Note: The original code used rolesMap[transaction.last_edited_by_username] which is incorrect as rolesMap keys are roles. 
+        // We will check against the user's role found via their ID.
+        const lastEditedUser = transaction.last_edited_by_id ? users.find(u => u.id === transaction.last_edited_by_id) : null;
+        const lastEditedUserRole = lastEditedUser ? lastEditedUser.role : '';
+
+        if (lastEditedUserRole && !['manager', 'admin'].includes(lastEditedUserRole)) {
             cardClass += ' edited-by-user';
         }
         
@@ -696,6 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="amount ${transaction.type}-label">${transaction.type === 'income' ? '+' : '-'}${formatNumber(parseFloat(transaction.amount))}</span>
             <span class="user-info"><i class="fas fa-user-tag"></i> <strong>بواسطة:</strong> ${transaction.added_by_description} (${transaction.added_by_username})</span>
             ${transaction.last_edited_by_username ? `<span class="user-info" style="color:#c49500;"><i class="fas fa-user-edit"></i> <strong>آخر تعديل:</strong> ${transaction.edited_by_description} (${transaction.last_edited_by_username})</span>` : ''}
+            ${transaction.approved_by_username ? `<span class="user-info approved-info"><i class="fas fa-check-circle"></i> <strong>الموافقة:</strong> ${transaction.approved_by_description} (${transaction.approved_by_username})</span>` : ''}
         `;
 
         const canEdit = ['manager', 'admin', 'editor', 'employee', 'new_employee'].includes(currentUser.role);
@@ -704,6 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (canEdit || canDelete) {
             transactionCard.classList.add('can-interact');
             let actionsHtml = `<div class="transaction-actions">`;
+            // Only non-managers/admins need to submit edit requests, but everyone can initiate the form
             if (canEdit) actionsHtml += `<button class="action-btn edit-btn" data-id="${transaction.id}"><i class="fas fa-edit"></i></button>`;
             if (canDelete) actionsHtml += `<button class="action-btn delete-btn" data-id="${transaction.id}"><i class="fas fa-trash-alt"></i></button>`;
             actionsHtml += `</div>`;
@@ -715,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return transactionCard;
     }
     
+    // --- Transaction Display Logic ---
     function updateTransactionsContainer(filteredTransactions) {
         transactionsContainer.innerHTML = '';
         const sortedTransactions = [...filteredTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -728,7 +1064,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const groupedData = {};
         sortedTransactions.forEach(t => {
             let key;
-            if (duration === 'current-year' || duration === 'last-year') {
+            // Group by year for yearly filters, or month for others
+            if (duration === 'current-year' || duration === 'last-year' || duration.includes('year') || isSearchActive && searchFromDateInput.value && searchToDateInput.value && (new Date(searchToDateInput.value).getFullYear() - new Date(searchFromDateInput.value).getFullYear() > 0)) {
                 key = t.date.substring(0, 4);
             } else {
                 key = t.date.substring(0, 7);
@@ -751,10 +1088,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const groupData = groupedData[key];
             const summaryDiv = document.createElement('div');
             const balance = groupData.income - groupData.expenses;
-            const title = `ملخص ${duration === 'current-year' || duration === 'last-year' ? 'عام' : 'شهر'} ${key.includes('-') ? monthNames[parseInt(key.split('-')[1], 10) - 1] + ' ' + key.split('-')[0] : key}`;
-            const className = isSearchActive ? 'search-summary' : (duration === 'current-year' || duration === 'last-year' ? 'yearly-summary' : 'monthly-summary');
-            summaryDiv.className = className;
-            summaryDiv.innerHTML = `<span class="summary-title">${title}</span><div class="summary-details"><p><strong>دخل:</strong> <span class="income-label">${formatNumber(groupData.income)}</span></p><p><strong>مصروف:</strong> <span class="expense-label">${formatNumber(groupData.expenses)}</span></p><p><strong>صافي:</strong> <span class="balance-label" style="color:${balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">${formatNumber(balance)}</span></p></div>`;
+            
+            let titleText;
+            let groupTypeClass;
+            if (key.includes('-') && key.length === 7) { // YYYY-MM
+                const parts = key.split('-');
+                titleText = `ملخص شهر ${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0]}`;
+                groupTypeClass = 'monthly-summary';
+            } else if (key.length === 4) { // YYYY
+                titleText = `ملخص عام ${key}`;
+                groupTypeClass = 'yearly-summary';
+            } else {
+                 titleText = `ملخص الفترة: ${key}`; // Should not happen with current logic, but fallback
+                 groupTypeClass = 'search-summary';
+            }
+
+            if (isSearchActive) groupTypeClass = 'search-summary';
+            
+            summaryDiv.className = groupTypeClass;
+            summaryDiv.innerHTML = `<span class="summary-title">${titleText}</span><div class="summary-details"><p><strong>دخل:</strong> <span class="income-label">${formatNumber(groupData.income)}</span></p><p><strong>مصروف:</strong> <span class="expense-label">${formatNumber(groupData.expenses)}</span></p><p><strong>صافي:</strong> <span class="balance-label" style="color:${balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">${formatNumber(balance)}</span></p></div>`;
             transactionsContainer.appendChild(summaryDiv);
             
             groupData.transactions.forEach(transaction => transactionsContainer.appendChild(createTransactionCard(transaction)));
@@ -763,25 +1115,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getFilteredTransactions(duration) {
         const today = new Date();
+        const approvedTransactions = transactions.filter(t => t.approved_by_id); // Only approved transactions
         let filtered = [];
-        if (duration === 'today') {
+        
+        if (duration === 'all') {
+             filtered = approvedTransactions;
+        } else if (duration === 'today') {
             const todayStr = today.toISOString().split('T')[0];
-            filtered = transactions.filter(t => t.date === todayStr);
+            filtered = approvedTransactions.filter(t => t.date === todayStr);
         } else if (duration === 'current-month') {
             const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
             const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
-            filtered = transactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
+            filtered = approvedTransactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
         } else if (duration === 'last-month') {
             const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             const firstDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
             const lastDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
-            filtered = transactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
+            filtered = approvedTransactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
         } else if (duration === 'current-year') {
             const currentYear = today.getFullYear();
-            filtered = transactions.filter(t => new Date(t.date).getFullYear() == currentYear);
+            filtered = approvedTransactions.filter(t => new Date(t.date).getFullYear() == currentYear);
         } else if (duration === 'last-year') {
             const lastYear = today.getFullYear() - 1;
-            filtered = transactions.filter(t => new Date(t.date).getFullYear() == lastYear);
+            filtered = approvedTransactions.filter(t => new Date(t.date).getFullYear() == lastYear);
         }
         return filtered;
     }
@@ -796,6 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     durationFilter.addEventListener('change', applyFilter);
     
+    // --- Transaction Modal & Form Logic ---
     addIncomeBtn.addEventListener('click', () => { modal.style.display = 'block'; modalTitle.textContent = 'إضافة دخل'; transactionTypeInput.value = 'income'; transactionIdInput.value = ''; transactionForm.reset(); transactionFormSubmitBtn.textContent = 'إضافة'; transactionFormSubmitBtn.disabled = false; });
     addExpenseBtn.addEventListener('click', () => { modal.style.display = 'block'; modalTitle.textContent = 'إضافة مصروف'; transactionTypeInput.value = 'expense'; transactionIdInput.value = ''; transactionForm.reset(); transactionFormSubmitBtn.textContent = 'إضافة'; transactionFormSubmitBtn.disabled = false; });
     closeBtn.addEventListener('click', () => modal.style.display = 'none');
@@ -821,9 +1178,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (transactionId) {
             data.id = transactionId;
-            response = await fetchAPI('transactions.php?action=edit', 'POST', data);
+            // Replaced fetchAPI('transactions.php?action=edit', 'POST', data)
+            response = await editTransaction(data);
         } else {
-            response = await fetchAPI('transactions.php?action=add', 'POST', data);
+            // Replaced fetchAPI('transactions.php?action=add', 'POST', data)
+            response = await addTransaction(data);
         }
         
         alert(response.message);
@@ -838,9 +1197,10 @@ document.addEventListener('DOMContentLoaded', () => {
             transactionFormSubmitBtn.disabled = false;
             transactionFormSubmitBtn.textContent = originalText;
             modal.style.display = 'none';
-        }, 3000);
+        }, 300); // Reduced delay for local operations
     });
     
+    // --- Transaction Actions (Edit/Delete) Logic ---
     transactionsContainer.addEventListener('click', async (e) => {
         const editBtn = e.target.closest('.edit-btn');
         const deleteBtn = e.target.closest('.delete-btn');
@@ -858,14 +1218,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('amount').value = parseFloat(transaction.amount);
                 document.getElementById('from-to').value = transaction.fromTo;
                 document.getElementById('note').value = transaction.note;
-                transactionFormSubmitBtn.textContent = 'تعديل';
+                
+                const isManagerOrAdmin = ['manager', 'admin'].includes(currentUser.role);
+                transactionFormSubmitBtn.textContent = isManagerOrAdmin ? 'تعديل مباشر' : 'طلب تعديل';
                 transactionFormSubmitBtn.disabled = false;
                 modal.style.display = 'block';
             }
         } else if (deleteBtn) {
-            const transactionId = parseInt(deleteBtn.dataset.id);
+            const transactionId = deleteBtn.dataset.id;
             if (confirm('هل أنت متأكد من حذف هذه المعاملة؟')) {
-                const response = await fetchAPI('transactions.php?action=delete', 'POST', { id: transactionId });
+                // Replaced fetchAPI('transactions.php?action=delete', 'POST', { id: transactionId })
+                const response = await deleteTransaction(transactionId);
                 alert(response.message);
                 if(response.success) {
                     await fetchAllData();
@@ -883,6 +1246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Touch Swipe Logic ---
     let startX = 0;
     let currentCard = null;
 
@@ -949,8 +1313,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     
+    // --- Advanced Search Logic ---
     advancedSearchBtn.addEventListener('click', () => advancedSearchModal.style.display = 'block');
     advancedSearchModalCloseBtn.addEventListener('click', () => advancedSearchModal.style.display = 'none');
+    
     advancedSearchForm.addEventListener('submit', (e) => {
         e.preventDefault();
         isSearchActive = true;
@@ -959,6 +1325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         advancedSearchModal.style.display = 'none';
         performAdvancedSearch();
     });
+
     clearSearchBtn.addEventListener('click', () => {
         advancedSearchForm.reset();
         isSearchActive = false;
@@ -975,13 +1342,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchUsername = searchUsernameInput.value.trim().toLowerCase();
         const searchFromDate = searchFromDateInput.value;
         const searchToDate = searchToDateInput.value;
+        
+        // Only search approved transactions
+        const approvedTransactions = transactions.filter(t => t.approved_by_id);
 
-        const filtered = transactions.filter(t => {
+        const filtered = approvedTransactions.filter(t => {
             const typeMatch = searchType === '' || t.type === searchType;
             const categoryMatch = searchCategory === '' || (t.category && t.category.toLowerCase().includes(searchCategory));
             const noteMatch = searchNote === '' || (t.note && t.note.toLowerCase().includes(searchNote));
             const fromToMatch = searchFromTo === '' || (t.fromTo && t.fromTo.toLowerCase().includes(searchFromTo));
-            const usernameMatch = !currentUser || currentUser.role !== 'manager' || searchUsername === '' || (t.added_by_username && t.added_by_username.toLowerCase().includes(searchUsername));
+            
+            // Manager only search criteria for username
+            let usernameMatch = true;
+            if (currentUser && currentUser.role === 'manager' && searchUsername !== '') {
+                usernameMatch = (t.added_by_username && t.added_by_username.toLowerCase().includes(searchUsername));
+            } else if (currentUser && currentUser.role !== 'manager' && searchUsername !== '') {
+                 // Non-managers should not see this field's effect unless they are searching their own name, but for consistency we use the original logic if the field is visible.
+                 usernameMatch = (t.added_by_username && t.added_by_username.toLowerCase().includes(searchUsername));
+            }
+            
             let dateMatch = true;
             const transactionDate = new Date(t.date);
             if (searchFromDate) {
@@ -991,7 +1370,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (searchToDate) {
                 const toDate = new Date(searchToDate);
                 toDate.setDate(toDate.getDate() + 1);
-                if (transactionDate > toDate) dateMatch = false;
+                if (transactionDate >= toDate) dateMatch = false;
             }
             return typeMatch && categoryMatch && noteMatch && fromToMatch && usernameMatch && dateMatch;
         });
@@ -1000,19 +1379,18 @@ document.addEventListener('DOMContentLoaded', () => {
     
     searchActiveBadge.addEventListener('click', () => clearSearchBtn.click());
 
+    // --- Backup/Restore Logic ---
     backupBtn.addEventListener('click', () => backupModal.style.display = 'block');
     backupModalCloseBtn.addEventListener('click', () => backupModal.style.display = 'none');
     
     createBackupBtn.addEventListener('click', async () => {
-        const transactionsResponse = await fetchAPI('transactions.php?action=get');
-        const pendingResponse = await fetchAPI('transactions.php?action=pending');
-        const usersResponse = await fetchAPI('users.php?action=get');
-        
+        // Data is already in memory, just structure it
         const backupData = {
-            users: usersResponse.users,
-            transactions: transactionsResponse.transactions,
-            pendingTransactions: pendingResponse.pending,
-            backupDate: new Date().toISOString()
+            users: users,
+            transactions: loadFromLocalStorage(LS_TRANSACTIONS),
+            pendingTransactions: loadFromLocalStorage(LS_PENDING),
+            backupDate: new Date().toISOString(),
+            version: 1.0 // Optional versioning
         };
         const jsonString = JSON.stringify(backupData, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -1039,11 +1417,22 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const restoredData = JSON.parse(e.target.result);
                 if (restoredData && restoredData.users && restoredData.transactions) {
-                    if (confirm('هل أنت متأكد من أنك تريد استعادة هذه البيانات؟ سيتم الكتابة فوق جميع البيانات الحالية.')) {
-                        alert('هذه الميزة تتطلب معالجة على الخادم لاستيراد البيانات. يرجى الاتصال بمسؤول النظام.');
+                    if (confirm('هل أنت متأكد من أنك تريد استعادة هذه البيانات؟ سيتم الكتابة فوق جميع البيانات الحالية في المتصفح.')) {
+                        // Restore to localStorage
+                        saveToLocalStorage(LS_USERS, restoredData.users);
+                        saveToLocalStorage(LS_TRANSACTIONS, restoredData.transactions);
+                        // Pending transactions is optional in backup
+                        if (restoredData.pendingTransactions) {
+                            saveToLocalStorage(LS_PENDING, restoredData.pendingTransactions);
+                        } else {
+                            localStorage.removeItem(LS_PENDING); // Clear if not in backup
+                        }
+                        
+                        alert('تم استعادة البيانات بنجاح من الملف! سيتم إعادة تحميل التطبيق.');
+                        window.location.reload(); // Force reload to ensure all data is loaded from LS
                     }
                 } else {
-                    alert('ملف النسخة الاحتياطية غير صالح أو تالف.');
+                    alert('ملف النسخة الاحتياطية غير صالح أو تالف. يجب أن يحتوي على "users" و "transactions".');
                 }
             } catch (error) {
                 alert('خطأ في قراءة الملف. تأكد من أنه ملف JSON صالح.');
@@ -1056,5 +1445,6 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsText(file);
     });
     
+    // --- Start Application ---
     checkLoginStatus();
 });
