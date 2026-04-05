@@ -72,20 +72,17 @@
         <div class="content-wrapper">
             <div class="dashboard-header">
                 <div class="summary-cards-container">
-                    <div class="summary-card balance">
-                        <p><i class="fas fa-balance-scale"></i> الرصيد</p>
-                        <span id="balance">0.00</span>
-                    </div>
-                </div>
-
-                <div class="summary-cards-row">
                     <div class="summary-card income">
-                        <p><i class="fas fa-arrow-up"></i> إجمالي دخل</p>
+                        <p><i class="fas fa-arrow-up"></i> إجمالي الدخل</p>
                         <span id="total-income">0.00</span>
                     </div>
                     <div class="summary-card expense">
-                        <p><i class="fas fa-arrow-down"></i> إجمالي مصروف</p>
+                        <p><i class="fas fa-arrow-down"></i> إجمالي المصروفات</p>
                         <span id="total-expenses">0.00</span>
+                    </div>
+                    <div class="summary-card balance">
+                        <p><i class="fas fa-balance-scale"></i> الرصيد</p>
+                        <span id="balance">0.00</span>
                     </div>
                 </div>
 
@@ -203,7 +200,7 @@
                 <label for="new-username">اسم المستخدم:</label>
                 <input type="text" id="new-username" required>
                 <label for="new-password">كلمة المرور:</label>
-                <input type="password" id="new-password">
+                <input type="password" id="new-password" required>
                 <label for="new-user-description">الوصف:</label>
                 <input type="text" id="new-user-description">
                 <button type="submit" class="submit-btn" id="save-user-btn">إضافة</button>

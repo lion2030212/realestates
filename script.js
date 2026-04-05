@@ -1,8 +1,4 @@
-// A helpful AI assistant built by Google.
-// Refactored JavaScript code to use localStorage instead of a simulated backend API.
-
-Document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element Selection ---
+document.addEventListener('DOMContentLoaded', () => {
     const loginScreen = document.getElementById('login-screen');
     const mainApp = document.getElementById('main-app');
     const loginForm = document.getElementById('login-form');
@@ -15,7 +11,6 @@ Document.addEventListener('DOMContentLoaded', () => {
     const closeBtn = document.querySelector('#modal .close-btn');
     const modalTitle = document.getElementById('modal-title');
     const transactionForm = document.getElementById('transaction-form');
-    const transactionFormSubmitBtn = document.querySelector('#transaction-form .submit-btn');
     const transactionTypeInput = document.getElementById('transaction-type');
     const transactionIdInput = document.getElementById('transaction-id');
     const transactionsContainer = document.getElementById('transactions-container');
@@ -41,7 +36,6 @@ Document.addEventListener('DOMContentLoaded', () => {
     const newPasswordInput = document.getElementById('new-password');
     const newUserDescriptionInput = document.getElementById('new-user-description');
     const saveUserBtn = document.getElementById('save-user-btn');
-    const newUserIdInput = document.getElementById('new-user-id');
 
     const logoutBtn = document.getElementById('logout-btn');
     const userGreetingSpan = document.getElementById('user-greeting');
@@ -91,6 +85,7 @@ Document.addEventListener('DOMContentLoaded', () => {
     const searchToDateInput = document.getElementById('search-to-date');
     const clearSearchBtn = document.getElementById('clear-search-btn');
     
+    // Stats Modal Elements
     const statsModal = document.getElementById('stats-modal');
     const statsModalCloseBtn = document.querySelector('#stats-modal .close-btn');
     const statsDurationFilter = document.getElementById('stats-duration-filter');
@@ -103,16 +98,13 @@ Document.addEventListener('DOMContentLoaded', () => {
     const noTopExpenseMsg = document.getElementById('no-top-expense');
     let statsChart;
 
-    // --- Application State ---
     let currentUser = null;
     let isSearchActive = false;
-    let transactions = [];
-    let pendingTransactions = [];
-    let users = [];
-    let myChart;
+    let loginAttempts = parseInt(localStorage.getItem('loginAttempts')) || 0;
+    const MAX_LOGIN_ATTEMPTS = 5;
     
-    // --- Constants ---
     const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+    
     const rolesMap = {
         'manager': 'مدير النظام',
         'admin': 'مشرف محترف',
@@ -121,303 +113,108 @@ Document.addEventListener('DOMContentLoaded', () => {
         'new_employee': 'موظف',
         'viewer': 'القارئ'
     };
-    
-    // --- Local Storage Keys ---
-    const LS_TRANSACTIONS = 'finance_transactions';
-    const LS_PENDING = 'finance_pending_transactions';
-    const LS_USERS = 'finance_users';
 
-    // --- Utility Functions ---
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let pendingTransactions = JSON.parse(localStorage.getItem('pendingTransactions')) || [];
+    let myChart;
 
-    function formatNumber(num) {
-        return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function generateUniqueId() {
-        return Date.now() + Math.random().toString(36).substring(2, 9);
-    }
-    
-    function saveToLocalStorage(key, data) {
-        localStorage.setItem(key, JSON.stringify(data));
+    function getInitialUsers() {
+        return [
+            { id: 1, username: 'manager', password: 'manager', role: 'manager', description: 'مدير النظام' },
+            { id: 2, username: 'admin', password: 'admin', role: 'admin', description: 'مشرف محترف' },
+            { id: 3, username: 'editor', password: 'editor', role: 'editor', description: 'مشرف' },
+            { id: 4, username: 'employee', password: 'employee', role: 'employee', description: 'موظف محترف' },
+            { id: 5, username: 'new_employee', password: 'new_employee', role: 'new_employee', description: 'موظف' },
+            { id: 6, username: 'viewer', password: 'viewer', role: 'viewer', description: 'قارئ فقط' }
+        ];
     }
     
-    function loadFromLocalStorage(key, defaultValue = []) {
-        const stored = localStorage.getItem(key);
-        try {
-            return stored ? JSON.parse(stored) : defaultValue;
-        } catch (e) {
-            console.error(`Error parsing localStorage key: ${key}`, e);
-            return defaultValue;
+    function getUsers() {
+        const users = JSON.parse(localStorage.getItem('users'));
+        if (!users || users.length === 0) {
+            const initialUsers = getInitialUsers();
+            saveUsers(initialUsers);
+            return initialUsers;
         }
+        return users;
     }
 
-    // --- Local Storage Initialization and Data Sync ---
-
-    function initializeLocalStorage() {
-        // Ensure initial users are set if the user list is empty or doesn't exist.
-        if (!localStorage.getItem(LS_USERS) || loadFromLocalStorage(LS_USERS).length === 0) {
-            // Initial Users setup (Manager and a few others)
-            const initialUsers = [
-                { id: generateUniqueId(), username: 'manager', password: 'password123', role: 'manager', description: 'مدير النظام الرئيسي' },
-                { id: generateUniqueId(), username: 'admin', password: 'password123', role: 'admin', description: 'مشرف محترف للمالية' },
-                { id: generateUniqueId(), username: 'employee1', password: 'password123', role: 'employee', description: 'موظف مدخل بيانات' }
-            ];
-            saveToLocalStorage(LS_USERS, initialUsers);
-        }
-        users = loadFromLocalStorage(LS_USERS);
-        transactions = loadFromLocalStorage(LS_TRANSACTIONS);
-        pendingTransactions = loadFromLocalStorage(LS_PENDING);
+    function saveUsers(users) {
+        localStorage.setItem('users', JSON.stringify(users));
     }
 
-    // --- Local Storage API Mocking Functions (Replacing fetchAPI) ---
-
-    async function loginUser(username, password) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-        const user = users.find(u => u.username === username && u.password === password);
-        if (user) {
-            return { success: true, user: { id: user.id, username: user.username, role: user.role, description: user.description || rolesMap[user.role] } };
-        }
-        return { success: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
+    function saveTransactions() {
+        localStorage.setItem('transactions', JSON.stringify(transactions));
     }
 
-    async function getUsers() {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return { success: true, users: users.map(u => ({...u, description: u.description || rolesMap[u.role]})) };
-    }
-
-    async function addUser(data) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        if (users.some(u => u.username === data.username)) {
-            return { success: false, message: 'اسم المستخدم موجود بالفعل.' };
-        }
-        const newUser = {
-            id: generateUniqueId(),
-            username: data.username,
-            password: data.password, // In a real app, this should be hashed
-            role: data.role,
-            description: data.description || rolesMap[data.role]
-        };
-        users.push(newUser);
-        saveToLocalStorage(LS_USERS, users);
-        return { success: true, message: 'تمت إضافة المستخدم بنجاح.' };
+    function savePendingTransactions() {
+        localStorage.setItem('pendingTransactions', JSON.stringify(pendingTransactions));
     }
     
-    async function editUser(data) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const index = users.findIndex(u => u.id == data.id);
-        if (index !== -1) {
-            const user = users[index];
-            user.username = data.username;
-            user.role = data.role;
-            user.description = data.description;
-            if (data.password && data.password !== user.password) {
-                 user.password = data.password; // Update password only if provided
-            }
-            users[index] = user;
-            saveToLocalStorage(LS_USERS, users);
-            // If the current user's role was edited, update session (FIX APPLIED HERE)
-            if (currentUser && currentUser.id == data.id) {
-                currentUser.role = data.role;
-                currentUser.username = data.username;
-                currentUser.description = data.description;
-                sessionStorage.setItem('loggedInUser', JSON.stringify(currentUser));
-                initApp(currentUser, false); // Re-initialize permissions without full data fetch
-            }
-            return { success: true, message: 'تم تحديث بيانات المستخدم بنجاح.' };
-        }
-        return { success: false, message: 'المستخدم غير موجود.' };
+    function getNotifications() {
+        return JSON.parse(localStorage.getItem('notifications')) || [];
     }
 
-    async function deleteUser(id) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const initialLength = users.length;
-        users = users.filter(u => u.id != id);
-        if (users.length < initialLength) {
-            saveToLocalStorage(LS_USERS, users);
-            // Also remove all transactions and pending by this user for data integrity in this local mock
-            transactions = transactions.filter(t => t.added_by_id != id);
-            pendingTransactions = pendingTransactions.filter(t => t.added_by_id != id);
-            saveToLocalStorage(LS_TRANSACTIONS, transactions);
-            saveToLocalStorage(LS_PENDING, pendingTransactions);
-            return { success: true, message: 'تم حذف المستخدم بنجاح.' };
-        }
-        return { success: false, message: 'المستخدم غير موجود.' };
+    function saveNotifications(notifications) {
+        localStorage.setItem('notifications', JSON.stringify(notifications));
     }
 
-    function getFullUserData(userId) {
-        const user = users.find(u => u.id === userId);
-        return user ? { username: user.username, description: user.description || rolesMap[user.role] } : { username: 'مستخدم غير معروف', description: 'غير معروف' };
-    }
-    
-    function enhanceTransaction(t) {
-        const addedBy = getFullUserData(t.added_by_id);
-        const approvedBy = t.approved_by_id ? getFullUserData(t.approved_by_id) : {};
-        const lastEditedBy = t.last_edited_by_id ? getFullUserData(t.last_edited_by_id) : {};
+    function updateNotificationBadge() {
+        if (!currentUser) return;
         
-        return {
-            ...t,
-            added_by_username: addedBy.username,
-            added_by_description: addedBy.description,
-            approved_by_username: approvedBy.username,
-            approved_by_description: approvedBy.description,
-            last_edited_by_username: lastEditedBy.username,
-            edited_by_description: lastEditedBy.description // Naming convention from original code
-        };
-    }
+        const allNotifications = getNotifications();
+        const userNotifications = allNotifications.filter(n => n.userId === currentUser.id);
+        const count = userNotifications.length;
 
-    async function getTransactions() {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return { success: true, transactions: transactions.map(enhanceTransaction) };
-    }
-
-    async function getPendingTransactions() {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return { success: true, pending: pendingTransactions.map(enhanceTransaction) };
-    }
-
-    async function addTransaction(data) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const isManager = currentUser.role === 'manager';
-        const isApproved = isManager;
-        
-        const newTransaction = {
-            id: generateUniqueId(),
-            type: data.type,
-            date: data.date,
-            category: data.category,
-            amount: data.amount,
-            fromTo: data.fromTo,
-            note: data.note,
-            added_by_id: currentUser.id,
-            approved_by_id: isApproved ? currentUser.id : null,
-            last_edited_by_id: null,
-            original_transaction_id: null, // For edit requests
-            created_at: new Date().toISOString()
-        };
-        
-        if (isApproved) {
-            transactions.push(newTransaction);
-            saveToLocalStorage(LS_TRANSACTIONS, transactions);
-            return { success: true, message: 'تمت إضافة المعاملة والموافقة عليها بنجاح.' };
+        if (count > 0) {
+            notificationBadge.textContent = count;
+            notificationBadge.classList.remove('hidden');
         } else {
-            pendingTransactions.push(newTransaction);
-            saveToLocalStorage(LS_PENDING, pendingTransactions);
-            return { success: true, message: 'تم إرسال المعاملة للموافقة.' };
+            notificationBadge.classList.add('hidden');
         }
     }
 
-    async function editTransaction(data) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const isManagerOrAdmin = ['manager', 'admin'].includes(currentUser.role);
-        
-        const existingTransactionIndex = transactions.findIndex(t => t.id == data.id);
-        const transactionToEdit = transactions[existingTransactionIndex];
+    function createNotificationsForPendingTransaction(pendingTransaction) {
+        let notifications = getNotifications();
+        const allUsers = getUsers();
+        const approverRoles = ['manager', 'admin', 'editor'];
 
-        if (!transactionToEdit) {
-            return { success: false, message: 'المعاملة غير موجودة.' };
-        }
+        const creatorNotification = {
+            id: Date.now() + Math.random(),
+            userId: currentUser.id,
+            transactionId: pendingTransaction.id,
+            message: `Your transaction request #${pendingTransaction.id} is pending approval.`
+        };
+        notifications.push(creatorNotification);
         
-        // Users (employee, editor) must submit an edit request (pending transaction)
-        if (!isManagerOrAdmin) {
-            const editRequest = {
-                ...transactionToEdit,
-                id: generateUniqueId(), // New ID for the pending request
-                type: data.type,
-                date: data.date,
-                category: data.category,
-                amount: data.amount,
-                fromTo: data.fromTo,
-                note: data.note,
-                approved_by_id: null, // Reset approval
-                original_transaction_id: data.id, // Link to the original
-                last_edited_by_id: currentUser.id,
-                created_at: new Date().toISOString() // Ensure created_at for sorting pending
+        const approvers = allUsers.filter(user => approverRoles.includes(user.role));
+        approvers.forEach(approver => {
+            if (approver.id === currentUser.id) return;
+
+            const approverNotification = {
+                id: Date.now() + Math.random(),
+                userId: approver.id,
+                transactionId: pendingTransaction.id,
+                message: `A new transaction #${pendingTransaction.id} requires your approval.`
             };
-            
-            pendingTransactions.push(editRequest);
-            saveToLocalStorage(LS_PENDING, pendingTransactions);
-            return { success: true, message: 'تم إرسال طلب تعديل المعاملة للموافقة.' };
-        } else {
-            // Manager/Admin can directly edit
-            transactionToEdit.type = data.type;
-            transactionToEdit.date = data.date;
-            transactionToEdit.category = data.category;
-            transactionToEdit.amount = data.amount;
-            transactionToEdit.fromTo = data.fromTo;
-            transactionToEdit.note = data.note;
-            transactionToEdit.last_edited_by_id = currentUser.id;
-            transactions[existingTransactionIndex] = transactionToEdit;
-            saveToLocalStorage(LS_TRANSACTIONS, transactions);
-            return { success: true, message: 'تم تعديل المعاملة بنجاح.' };
-        }
+            notifications.push(approverNotification);
+        });
+
+        saveNotifications(notifications);
+    }
+    
+    function clearNotificationsForTransaction(transactionId) {
+        let notifications = getNotifications();
+        const updatedNotifications = notifications.filter(n => n.transactionId !== transactionId);
+        saveNotifications(updatedNotifications);
     }
 
-    async function deleteTransaction(id) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const initialLength = transactions.length;
-        transactions = transactions.filter(t => t.id != id);
-        if (transactions.length < initialLength) {
-            saveToLocalStorage(LS_TRANSACTIONS, transactions);
-            return { success: true, message: 'تم حذف المعاملة بنجاح.' };
-        }
-        return { success: false, message: 'المعاملة غير موجودة.' };
-    }
+    durationFilter.value = 'current-month';
 
-    async function approveTransaction(id) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const index = pendingTransactions.findIndex(t => t.id == id);
-        if (index === -1) return { success: false, message: 'طلب المعاملة غير موجود.' };
-        
-        const pendingT = pendingTransactions[index];
-        pendingT.approved_by_id = currentUser.id;
-        
-        if (pendingT.original_transaction_id) {
-            // This is an edit request
-            const originalIndex = transactions.findIndex(t => t.id == pendingT.original_transaction_id);
-            if (originalIndex !== -1) {
-                // Apply the changes to the original transaction
-                const originalT = transactions[originalIndex];
-                originalT.type = pendingT.type;
-                originalT.date = pendingT.date;
-                originalT.category = pendingT.category;
-                originalT.amount = pendingT.amount;
-                originalT.fromTo = pendingT.fromTo;
-                originalT.note = pendingT.note;
-                originalT.last_edited_by_id = pendingT.last_edited_by_id; // Keep the ID of the user who requested the edit
-                transactions[originalIndex] = originalT;
-            }
-        } else {
-            // New transaction - Add to transactions list
-            // We should strip the temporary pending ID and use the full object including added_by_id
-            const approvedTransaction = { ...pendingT, approved_by_id: currentUser.id };
-            transactions.push(approvedTransaction);
-        }
-        
-        // Remove from pending
-        pendingTransactions.splice(index, 1);
-        saveToLocalStorage(LS_TRANSACTIONS, transactions);
-        saveToLocalStorage(LS_PENDING, pendingTransactions);
-        
-        return { success: true, message: 'تمت الموافقة على المعاملة بنجاح.' };
-    }
-
-    async function rejectTransaction(id) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const initialLength = pendingTransactions.length;
-        pendingTransactions = pendingTransactions.filter(t => t.id != id);
-        if (pendingTransactions.length < initialLength) {
-            saveToLocalStorage(LS_PENDING, pendingTransactions);
-            return { success: true, message: 'تم رفض طلب المعاملة بنجاح.' };
-        }
-        return { success: false, message: 'طلب المعاملة غير موجود.' };
-    }
-
-
-    // --- Core Application Logic (Refactored to use local functions) ---
-
-    async function initApp(user, fetchData = true) {
+    function initApp(user) {
         currentUser = user;
-        sessionStorage.setItem('loggedInUser', JSON.stringify(currentUser));
+        localStorage.setItem('loggedInUser', JSON.stringify(currentUser));
+        localStorage.setItem('loginAttempts', 0);
         loginScreen.classList.add('hidden');
         mainApp.classList.remove('hidden');
         errorMessage.style.display = 'none';
@@ -431,20 +228,12 @@ Document.addEventListener('DOMContentLoaded', () => {
         manageUsersBtn.classList.toggle('hidden', !isManager);
         permissionsBtn.classList.toggle('hidden', !isManager);
         backupBtn.classList.toggle('hidden', !isManager);
-        const managerOnlySearchElement = document.querySelector('#advanced-search-modal .manager-only');
-        if (managerOnlySearchElement) {
-            managerOnlySearchElement.classList.toggle('hidden', !isManager);
-        }
+        document.querySelector('#advanced-search-modal .manager-only').classList.toggle('hidden', !isManager);
 
         addIncomeBtn.classList.toggle('hidden', !canAdd);
         addExpenseBtn.classList.toggle('hidden', !canAdd);
         notificationsBtn.classList.toggle('hidden', !canSeeNotifications);
         
-        durationFilter.value = 'current-month';
-        
-        if (fetchData) {
-            await fetchAllData();
-        }
         applyFilter();
         updateSummary();
         initializeChart();
@@ -452,136 +241,149 @@ Document.addEventListener('DOMContentLoaded', () => {
         updateNotificationBadge();
     }
 
-    async function fetchAllData() {
-        const transactionsResponse = await getTransactions();
-        if (transactionsResponse.success) {
-            transactions = transactionsResponse.transactions;
-        }
-
-        const pendingResponse = await getPendingTransactions();
-        if (pendingResponse.success) {
-            pendingTransactions = pendingResponse.pending;
-        }
-    }
-
     function checkLoginStatus() {
-        initializeLocalStorage();
-        const storedUser = sessionStorage.getItem('loggedInUser');
+        const storedUser = localStorage.getItem('loggedInUser');
         if (storedUser) {
             try {
                 const user = JSON.parse(storedUser);
                 initApp(user);
             } catch (e) {
                 console.error("Failed to parse stored user data:", e);
-                sessionStorage.removeItem('loggedInUser');
+                localStorage.removeItem('loggedInUser');
             }
         }
     }
-    
-    let loginAttempts = 0;
-    const maxAttempts = 5;
-    const lockoutDuration = 30000;
 
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const loginBtn = loginForm.querySelector('.modern-btn');
-
-        if (loginBtn.disabled) {
-            return;
-        }
+    function handleFailedLogin() {
+        loginAttempts++;
+        localStorage.setItem('loginAttempts', loginAttempts);
+        errorMessage.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة.';
+        errorMessage.style.display = 'block';
+        passwordInput.value = '';
         
+        if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+            const loginButton = loginForm.querySelector('.modern-btn');
+            loginButton.disabled = true;
+            errorMessage.textContent = `تم تجاوز الحد الأقصى للمحاولات (${MAX_LOGIN_ATTEMPTS}). الرجاء المحاولة بعد 30 ثانية.`;
+            setTimeout(() => {
+                loginButton.disabled = false;
+                loginAttempts = 0;
+                localStorage.setItem('loginAttempts', 0);
+                errorMessage.textContent = '';
+                errorMessage.style.display = 'none';
+            }, 30000); // 30 seconds
+        }
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
         const username = usernameInput.value;
         const password = passwordInput.value;
+        const users = getUsers();
         
-        // Replaced fetchAPI('login.php', 'POST', { username, password })
-        const response = await loginUser(username, password);
-        
-        if (response.success) {
-            loginAttempts = 0;
-            initApp(response.user);
-        } else {
-            loginAttempts++;
-            errorMessage.textContent = response.message;
-            errorMessage.style.display = 'block';
-            passwordInput.value = '';
+        const user = users.find(u => u.username === username && u.password === password);
 
-            if (loginAttempts >= maxAttempts) {
-                loginBtn.disabled = true;
-                loginBtn.textContent = 'تم تجميد الدخول (30 ثانية)';
-                setTimeout(() => {
-                    loginBtn.disabled = false;
-                    loginBtn.textContent = 'دخول';
-                    loginAttempts = 0;
-                    errorMessage.style.display = 'none';
-                }, lockoutDuration);
-            }
+        if (user) {
+            initApp(user);
+        } else {
+            handleFailedLogin();
         }
     });
 
     logoutBtn.addEventListener('click', () => {
         currentUser = null;
-        sessionStorage.removeItem('loggedInUser');
+        localStorage.removeItem('loggedInUser');
         loginScreen.classList.remove('hidden');
         mainApp.classList.add('hidden');
         loginForm.reset();
         sidebar.classList.remove('show');
     });
 
-    // --- Sidebar Toggles ---
-    sidebarToggleBtn.addEventListener('click', () => sidebar.classList.toggle('show'));
-    sidebarCloseBtn.addEventListener('click', () => sidebar.classList.remove('show'));
-    document.addEventListener('click', (e) => {
-        if (sidebar.classList.contains('show') && !sidebar.contains(e.target) && !sidebarToggleBtn.contains(e.target)) {
-            sidebar.classList.remove('show');
-        }
+    sidebarToggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('show');
     });
     
-    // --- Stats Modal Logic ---
-    statsBtn.addEventListener('click', async () => {
+    sidebarCloseBtn.addEventListener('click', () => {
+        sidebar.classList.remove('show');
+    });
+
+    statsBtn.addEventListener('click', () => {
         statsModal.style.display = 'block';
-        if (!statsChart) initializeStatsChart();
+        if (!statsChart) {
+            initializeStatsChart();
+        }
         statsDurationFilter.value = 'current-month';
-        await updateStatsChart();
+        updateStatsChart();
         renderTopTransactions();
     });
 
-    statsModalCloseBtn.addEventListener('click', () => statsModal.style.display = 'none');
-    statsDurationFilter.addEventListener('change', () => { updateStatsChart(); renderTopTransactions(); });
+    statsModalCloseBtn.addEventListener('click', () => {
+        statsModal.style.display = 'none';
+    });
+
+    statsDurationFilter.addEventListener('change', () => {
+        updateStatsChart();
+        renderTopTransactions();
+    });
+
     barChartBtn.addEventListener('click', () => {
         barChartBtn.classList.add('active-chart-btn');
         pieChartBtn.classList.remove('active-chart-btn');
         updateStatsChart('bar');
     });
+
     pieChartBtn.addEventListener('click', () => {
         pieChartBtn.classList.add('active-chart-btn');
         barChartBtn.classList.remove('active-chart-btn');
         updateStatsChart('pie');
     });
-
+    
     function initializeStatsChart() {
         const ctx = statsChartCanvas.getContext('2d');
-        if (statsChart) statsChart.destroy();
-        statsChart = new Chart(ctx, { type: 'bar', data: { labels: ['الدخل', 'المصروفات'], datasets: [{ label: 'إجمالي المبلغ', data: [0, 0], backgroundColor: ['rgba(46, 204, 113, 0.7)', 'rgba(231, 76, 60, 0.7)'], borderColor: ['rgba(46, 204, 113, 1)', 'rgba(231, 76, 60, 1)'], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } } });
+        statsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['الدخل', 'المصروفات'],
+                datasets: [{
+                    label: 'إجمالي المبلغ',
+                    data: [0, 0],
+                    backgroundColor: ['rgba(46, 204, 113, 0.7)', 'rgba(231, 76, 60, 0.7)'],
+                    borderColor: ['rgba(46, 204, 113, 1)', 'rgba(231, 76, 60, 1)'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
     }
 
     function updateStatsChart(chartType = statsChart.config.type) {
         const duration = statsDurationFilter.value;
         const filteredTransactions = getFilteredTransactions(duration);
-        const totalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
-        const totalExpenses = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+        const totalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const totalExpenses = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
         
         statsChart.config.type = chartType;
         if (chartType === 'pie') {
             statsChart.data.labels = ['الدخل', 'المصروفات'];
             statsChart.data.datasets[0].label = 'توزيع المبالغ';
             statsChart.data.datasets[0].data = [totalIncome, totalExpenses];
-            if(statsChart.options.scales.y) statsChart.options.scales.y.display = false;
-        } else {
+            statsChart.options.scales.y.display = false;
+        } else { // bar
             statsChart.data.labels = ['الدخل', 'المصروفات'];
             statsChart.data.datasets[0].label = 'إجمالي المبلغ';
             statsChart.data.datasets[0].data = [totalIncome, totalExpenses];
-            if(statsChart.options.scales.y) statsChart.options.scales.y.display = true;
+            statsChart.options.scales.y.display = true;
         }
+        
         statsChart.update();
     }
     
@@ -589,11 +391,14 @@ Document.addEventListener('DOMContentLoaded', () => {
         const duration = statsDurationFilter.value;
         const filteredTransactions = getFilteredTransactions(duration);
 
-        const incomeTransactions = filteredTransactions.filter(t => t.type === 'income').sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
-        const expenseTransactions = filteredTransactions.filter(t => t.type === 'expense').sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
+        const incomeTransactions = filteredTransactions.filter(t => t.type === 'income').sort((a, b) => b.amount - a.amount);
+        const expenseTransactions = filteredTransactions.filter(t => t.type === 'expense').sort((a, b) => b.amount - a.amount);
         
-        topIncomeList.innerHTML = ''; topExpenseList.innerHTML = '';
-        noTopIncomeMsg.classList.add('hidden'); noTopExpenseMsg.classList.add('hidden');
+        topIncomeList.innerHTML = '';
+        topExpenseList.innerHTML = '';
+        
+        noTopIncomeMsg.classList.add('hidden');
+        noTopExpenseMsg.classList.add('hidden');
 
         if (incomeTransactions.length === 0) {
             noTopIncomeMsg.classList.remove('hidden');
@@ -601,7 +406,13 @@ Document.addEventListener('DOMContentLoaded', () => {
             incomeTransactions.slice(0, 5).forEach(t => {
                 const item = document.createElement('div');
                 item.className = 'top-transaction-item';
-                item.innerHTML = `<div class="details"><strong>${t.category}</strong><span>${t.date}</span></div><span class="amount income-label">+${formatNumber(parseFloat(t.amount))}</span>`;
+                item.innerHTML = `
+                    <div class="details">
+                        <strong>${t.category}</strong>
+                        <span>${t.date}</span>
+                    </div>
+                    <span class="amount income-label">+${t.amount.toFixed(2)}</span>
+                `;
                 topIncomeList.appendChild(item);
             });
         }
@@ -612,19 +423,30 @@ Document.addEventListener('DOMContentLoaded', () => {
             expenseTransactions.slice(0, 5).forEach(t => {
                 const item = document.createElement('div');
                 item.className = 'top-transaction-item';
-                item.innerHTML = `<div class="details"><strong>${t.category}</strong><span>${t.date}</span></div><span class="amount expense-label">-${formatNumber(parseFloat(t.amount))}</span>`;
+                item.innerHTML = `
+                    <div class="details">
+                        <strong>${t.category}</strong>
+                        <span>${t.date}</span>
+                    </div>
+                    <span class="amount expense-label">-${t.amount.toFixed(2)}</span>
+                `;
                 topExpenseList.appendChild(item);
             });
         }
     }
     
-    // --- User Management Logic ---
-    manageUsersBtn.addEventListener('click', async () => {
+    manageUsersBtn.addEventListener('click', () => {
         usersModal.style.display = 'block';
         userRoleFilter.value = 'all';
-        await renderUsersList();
+        renderUsersList();
     });
-    usersModalCloseBtn.addEventListener('click', () => { usersModal.style.display = 'none'; addUserForm.classList.add('hidden'); showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد'; addUserForm.reset(); newUserIdInput.value = ''; });
+
+    usersModalCloseBtn.addEventListener('click', () => {
+        usersModal.style.display = 'none';
+        addUserForm.classList.add('hidden');
+        addUserForm.reset();
+        showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
+    });
     
     showAddUserFormBtn.addEventListener('click', () => {
         addUserForm.classList.toggle('hidden');
@@ -632,7 +454,7 @@ Document.addEventListener('DOMContentLoaded', () => {
             showAddUserFormBtn.textContent = 'إلغاء';
             saveUserBtn.textContent = 'إضافة';
             addUserForm.reset();
-            newUserIdInput.value = '';
+            document.getElementById('new-user-id').value = '';
         } else {
             showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
         }
@@ -640,47 +462,43 @@ Document.addEventListener('DOMContentLoaded', () => {
 
     userRoleFilter.addEventListener('change', renderUsersList);
 
-    addUserForm.addEventListener('submit', async (e) => {
+    addUserForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        const newUserId = newUserIdInput.value;
+        const users = getUsers();
+        const newUserId = document.getElementById('new-user-id').value;
+        
         const role = newUserRoleInput.value;
         const username = newUsernameInput.value;
         const password = newPasswordInput.value;
         const description = newUserDescriptionInput.value;
         
-        let response;
         if (newUserId) {
-            // Replaced fetchAPI('users.php?action=edit', 'POST', { id: newUserId, ... })
-            response = await editUser({ id: newUserId, username, password, role, description });
+            const index = users.findIndex(u => u.id == newUserId);
+            if (index !== -1) {
+                users[index] = { id: parseInt(newUserId), username, password, role, description };
+            }
         } else {
-            // Replaced fetchAPI('users.php?action=add', 'POST', { ... })
-            if (!password) {
-                alert('الرجاء إدخال كلمة مرور للمستخدم الجديد.');
+            const isUsernameTaken = users.some(u => u.username === username);
+            if (isUsernameTaken) {
+                alert('اسم المستخدم موجود بالفعل. اختر اسمًا آخر.');
                 return;
             }
-            response = await addUser({ username, password, role, description });
+            const newId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
+            users.push({ id: newId, username, password, role, description });
         }
         
-        alert(response.message);
-        if (response.success) {
-            await renderUsersList();
-            addUserForm.classList.add('hidden');
-            addUserForm.reset();
-            showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
-        }
+        saveUsers(users);
+        renderUsersList();
+        addUserForm.classList.add('hidden');
+        addUserForm.reset();
+        showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
     });
     
-    async function renderUsersList() {
-        // Replaced fetchAPI('users.php?action=get')
-        const response = await getUsers();
-        if (!response.success) {
-            usersListContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
-            return;
-        }
-        
-        const usersData = response.users;
+    function renderUsersList() {
+        const users = getUsers();
         const selectedRole = userRoleFilter.value;
-        const filteredUsers = selectedRole === 'all' ? usersData : usersData.filter(u => u.role === selectedRole);
+        
+        const filteredUsers = selectedRole === 'all' ? users : users.filter(u => u.role === selectedRole);
         
         usersListContainer.innerHTML = '';
         if (filteredUsers.length === 0) {
@@ -693,27 +511,27 @@ Document.addEventListener('DOMContentLoaded', () => {
             userCard.className = 'user-card';
             userCard.innerHTML = `
                 <div class="user-info-text">
-                    <h4>${user.username} ${user.id == currentUser.id ? '(أنت)' : ''}</h4>
+                    <h4>${user.username}</h4>
                     <p><strong>الدور:</strong> ${rolesMap[user.role]}</p>
                     <p><strong>الوصف:</strong> ${user.description || 'لا يوجد'}</p>
                 </div>
                 <div class="user-actions">
-                    <button class="action-btn edit-user-btn" data-id="${user.id}" ${user.id == currentUser.id ? 'disabled title="لا يمكنك تعديل دورك/حسابك من هنا"' : ''}><i class="fas fa-edit"></i> تعديل</button>
-                    <button class="action-btn delete-user-btn" data-id="${user.id}" ${user.id == currentUser.id ? 'disabled title="لا يمكنك حذف حسابك أثناء تسجيل الدخول"' : ''}><i class="fas fa-trash-alt"></i> حذف</button>
+                    <button class="action-btn edit-user-btn" data-id="${user.id}"><i class="fas fa-edit"></i> تعديل</button>
+                    <button class="action-btn delete-user-btn" data-id="${user.id}"><i class="fas fa-trash-alt"></i> حذف</button>
                 </div>
             `;
             usersListContainer.appendChild(userCard);
         });
 
-        document.querySelectorAll('.edit-user-btn:not([disabled])').forEach(btn => {
+        document.querySelectorAll('.edit-user-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const userId = e.target.closest('button').dataset.id;
-                const userToEdit = users.find(u => u.id == userId);
+                const userToEdit = getUsers().find(u => u.id == userId);
                 if (userToEdit) {
-                    newUserIdInput.value = userToEdit.id;
+                    document.getElementById('new-user-id').value = userToEdit.id;
                     newUserRoleInput.value = userToEdit.role;
                     newUsernameInput.value = userToEdit.username;
-                    newPasswordInput.value = ''; // Don't pre-fill password for security
+                    newPasswordInput.value = userToEdit.password;
                     newUserDescriptionInput.value = userToEdit.description;
                     addUserForm.classList.remove('hidden');
                     saveUserBtn.textContent = 'حفظ التعديل';
@@ -722,50 +540,65 @@ Document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        document.querySelectorAll('.delete-user-btn:not([disabled])').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
                 const userId = e.target.closest('button').dataset.id;
-                if (confirm('هل أنت متأكد من حذف هذا المستخدم؟ سيتم أيضًا حذف جميع معاملاته المعلقة والمعتمدة.')) {
-                    // Replaced fetchAPI('users.php?action=delete', 'POST', { id: userId })
-                    const response = await deleteUser(userId);
-                    alert(response.message);
-                    if (response.success) {
-                        await renderUsersList();
-                        // Re-fetch transactions after user deletion (which also deletes their transactions)
-                        await fetchAllData(); 
-                        applyFilter();
-                        updateSummary();
-                        updateChart();
+                if (confirm('هل أنت متأكد من حذف هذا المستخدم؟')) {
+                    let users = getUsers();
+                    users = users.filter(u => u.id != userId);
+                    saveUsers(users);
+                    renderUsersList();
+                    if (currentUser && currentUser.id == userId) {
+                        alert('تم حذف حسابك. سيتم تسجيل الخروج.');
+                        window.location.reload();
                     }
                 }
             });
         });
     }
-
-    // --- Notifications/Pending Transactions Logic ---
+    
     notificationsBtn.addEventListener('click', () => {
         renderPendingTransactions();
         messagesModal.style.display = 'block';
     });
-    messagesModalCloseBtn.addEventListener('click', () => messagesModal.style.display = 'none');
 
-    async function renderPendingTransactions() {
-        // Replaced fetchAPI('transactions.php?action=pending')
-        const response = await getPendingTransactions();
-        if (!response.success) {
-            pendingTransactionsContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
-            return;
+    messagesModalCloseBtn.addEventListener('click', () => {
+        messagesModal.style.display = 'none';
+    });
+
+    permissionsBtn.addEventListener('click', () => {
+        permissionsModal.style.display = 'block';
+        approvedDurationFilter.value = 'current-month';
+        customDateFilter.classList.add('hidden');
+        renderApprovedTransactions();
+    });
+
+    permissionsModalCloseBtn.addEventListener('click', () => {
+        permissionsModal.style.display = 'none';
+    });
+    
+    approvedDurationFilter.addEventListener('change', () => {
+        if (approvedDurationFilter.value === 'custom') {
+            customDateFilter.classList.remove('hidden');
+        } else {
+            customDateFilter.classList.add('hidden');
+            renderApprovedTransactions();
         }
-        pendingTransactions = response.pending;
+    });
+
+    approvedFromDate.addEventListener('change', renderApprovedTransactions);
+    approvedToDate.addEventListener('change', renderApprovedTransactions);
+    
+    function renderPendingTransactions() {
         pendingTransactionsContainer.innerHTML = '';
         const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
-        
+
         if (pendingTransactions.length === 0) {
             noPendingTransactionsMsg.classList.remove('hidden');
         } else {
             noPendingTransactionsMsg.classList.add('hidden');
-            pendingTransactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach(t => {
-                const isEdit = !!t.original_transaction_id;
+            pendingTransactions.forEach(t => {
+                const isEdit = !!t.originalId;
                 const card = document.createElement('div');
                 card.className = `pending-card ${isEdit ? 'pending-edit-card' : ''}`;
                 
@@ -779,12 +612,12 @@ Document.addEventListener('DOMContentLoaded', () => {
                     <div class="card-details">
                         <p><strong>التاريخ:</strong> ${t.date}</p>
                         <p><strong>التصنيف:</strong> ${t.category}</p>
-                        <p><strong>المبلغ:</strong> <span class="${t.type}-label">${t.type === 'income' ? '+' : '-'}${formatNumber(parseFloat(t.amount))}</span></p>
+                        <p><strong>المبلغ:</strong> <span class="${t.type}-label">${t.type === 'income' ? '+' : '-'}${t.amount.toFixed(2)}</span></p>
                         <p><strong>من/إلى:</strong> ${t.fromTo || 'غير محدد'}</p>
                         <p><strong>ملاحظة:</strong> ${t.note || 'لا توجد'}</p>
                         <div class="card-footer">
-                            <p><strong>بواسطة:</strong> ${t.added_by_description} (${t.added_by_username})</p>
-                            ${isEdit ? `<p class="status-note">طلب تعديل بواسطة: ${t.edited_by_description} (${t.last_edited_by_username})</p>` : '<p class="status-note">معاملة جديدة بانتظار الموافقة</p>'}
+                            <p><strong>بواسطة:</strong> ${t.lastActionBy.description} (${t.lastActionBy.username})</p>
+                            ${isEdit ? '<p class="status-note">طلب تعديل ينتظر الموافقة</p>' : '<p class="status-note">معاملة جديدة بانتظار الموافقة</p>'}
                         </div>
                     </div>
                     ${actionsHTML}
@@ -792,81 +625,12 @@ Document.addEventListener('DOMContentLoaded', () => {
                 pendingTransactionsContainer.appendChild(card);
             });
         }
-        updateNotificationBadge();
     }
     
-    pendingTransactionsContainer.addEventListener('click', async (e) => {
-        const approveBtn = e.target.closest('.approve-btn');
-        const rejectBtn = e.target.closest('.reject-btn');
+    function renderApprovedTransactions() {
+        approvedTransactionsContainer.innerHTML = '';
+        const allApproved = transactions.filter(t => t.approvedBy);
         
-        if (approveBtn) {
-            const id = approveBtn.dataset.id;
-            // Replaced fetchAPI('transactions.php?action=approve', 'POST', { id })
-            const response = await approveTransaction(id);
-            alert(response.message);
-            if(response.success) {
-                await fetchAllData();
-                applyFilter();
-                updateSummary();
-                updateChart();
-                renderPendingTransactions();
-            }
-        } else if (rejectBtn) {
-            const id = rejectBtn.dataset.id;
-            // Replaced fetchAPI('transactions.php?action=reject', 'POST', { id })
-            const response = await rejectTransaction(id);
-            alert(response.message);
-            if(response.success) {
-                await fetchAllData();
-                applyFilter();
-                renderPendingTransactions();
-            }
-        }
-    });
-
-    function updateNotificationBadge() {
-        if (!currentUser) return;
-        
-        // Only show badge if the user has permission to approve
-        const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
-        const count = canApprove ? pendingTransactions.length : 0;
-        
-        if (count > 0) {
-            notificationBadge.textContent = count;
-            notificationBadge.classList.remove('hidden');
-        } else {
-            notificationBadge.classList.add('hidden');
-        }
-    }
-    
-    // --- Permissions (Approved Transactions) Logic ---
-    permissionsBtn.addEventListener('click', async () => {
-        permissionsModal.style.display = 'block';
-        approvedDurationFilter.value = 'current-month';
-        customDateFilter.classList.add('hidden');
-        await renderApprovedTransactions();
-    });
-    permissionsModalCloseBtn.addEventListener('click', () => permissionsModal.style.display = 'none');
-    approvedDurationFilter.addEventListener('change', async () => {
-        if (approvedDurationFilter.value === 'custom') {
-            customDateFilter.classList.remove('hidden');
-        } else {
-            customDateFilter.classList.add('hidden');
-            await renderApprovedTransactions();
-        }
-    });
-    approvedFromDate.addEventListener('change', renderApprovedTransactions);
-    approvedToDate.addEventListener('change', renderApprovedTransactions);
-    
-    async function renderApprovedTransactions() {
-        // Replaced fetchAPI('transactions.php?action=get')
-        const response = await getTransactions();
-        if (!response.success) {
-            approvedTransactionsContainer.innerHTML = `<p style="text-align:center; padding: 20px;">${response.message}</p>`;
-            return;
-        }
-
-        const allApproved = response.transactions.filter(t => t.approved_by_id); // Filter by existing approved_by_id
         let filteredApproved = [];
         const duration = approvedDurationFilter.value;
         const today = new Date();
@@ -894,15 +658,14 @@ Document.addEventListener('DOMContentLoaded', () => {
             if (fromDate && toDate) {
                 const from = new Date(fromDate);
                 const to = new Date(toDate);
-                to.setDate(to.getDate() + 1); // To include the 'toDate' fully
+                to.setDate(to.getDate() + 1);
                 filteredApproved = allApproved.filter(t => {
                     const transactionDate = new Date(t.date);
-                    return transactionDate >= from && transactionDate < to;
+                    return transactionDate >= from && transactionDate <= to;
                 });
             }
         }
         
-        approvedTransactionsContainer.innerHTML = '';
         if (filteredApproved.length === 0) {
             noApprovedTransactionsMsg.classList.remove('hidden');
         } else {
@@ -914,12 +677,12 @@ Document.addEventListener('DOMContentLoaded', () => {
                     <div class="card-details">
                         <p><strong>التاريخ:</strong> ${t.date}</p>
                         <p><strong>التصنيف:</strong> ${t.category}</p>
-                        <p><strong>المبلغ:</strong> <span class="${t.type}-label">${t.type === 'income' ? '+' : '-'}${formatNumber(parseFloat(t.amount))}</span></p>
+                        <p><strong>المبلغ:</strong> <span class="${t.type}-label">${t.type === 'income' ? '+' : '-'}${t.amount.toFixed(2)}</span></p>
                         <p><strong>من/إلى:</strong> ${t.fromTo || 'غير محدد'}</p>
                         <p><strong>ملاحظة:</strong> ${t.note || 'لا توجد'}</p>
                         <div class="card-footer">
-                            <p><strong>أضيفت بواسطة:</strong> ${t.added_by_description} (${t.added_by_username})</p>
-                            <p><strong>تمت الموافقة بواسطة:</strong> ${t.approved_by_description} (${t.approved_by_username})</p>
+                            <p><strong>أضيفت بواسطة:</strong> ${t.lastActionBy.description} (${t.lastActionBy.username})</p>
+                            <p><strong>تمت الموافقة بواسطة:</strong> ${t.approvedBy.description} (${t.approvedBy.username})</p>
                         </div>
                     </div>
                 `;
@@ -927,95 +690,188 @@ Document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
-    
-    // --- Chart Logic ---
+
+    pendingTransactionsContainer.addEventListener('click', (e) => {
+        const approveBtn = e.target.closest('.approve-btn');
+        const rejectBtn = e.target.closest('.reject-btn');
+        const canApprove = ['manager', 'admin', 'editor'].includes(currentUser.role);
+        
+        if (!canApprove) return;
+
+        if (approveBtn) {
+            const id = parseInt(approveBtn.dataset.id);
+            const transactionToApprove = pendingTransactions.find(t => t.id === id);
+            if (transactionToApprove) {
+                const isEdit = !!transactionToApprove.originalId;
+
+                if (isEdit) {
+                    const originalIndex = transactions.findIndex(t => t.id === transactionToApprove.originalId);
+                    if (originalIndex !== -1) {
+                        transactions[originalIndex] = {
+                            ...transactions[originalIndex],
+                            date: transactionToApprove.date, category: transactionToApprove.category,
+                            amount: transactionToApprove.amount, fromTo: transactionToApprove.fromTo,
+                            note: transactionToApprove.note, type: transactionToApprove.type,
+                            isEdited: false,
+                            approvedBy: { username: currentUser.username, description: rolesMap[currentUser.role] },
+                            lastEditedBy: transactionToApprove.lastActionBy 
+                        };
+                    }
+                } else {
+                    transactionToApprove.approvedBy = { username: currentUser.username, description: rolesMap[currentUser.role] };
+                    transactions.push(transactionToApprove);
+                }
+
+                pendingTransactions = pendingTransactions.filter(t => t.id !== id);
+                clearNotificationsForTransaction(id);
+                saveTransactions();
+                savePendingTransactions();
+                applyFilter();
+                updateSummary();
+                updateChart();
+                renderPendingTransactions();
+                updateNotificationBadge();
+            }
+        } else if (rejectBtn) {
+            const id = parseInt(rejectBtn.dataset.id);
+            const transactionToReject = pendingTransactions.find(t => t.id === id);
+            
+            if(transactionToReject && transactionToReject.originalId) {
+                const originalTransaction = transactions.find(t => t.id === transactionToReject.originalId);
+                if(originalTransaction) {
+                    originalTransaction.isEdited = false;
+                }
+                saveTransactions();
+            }
+
+            pendingTransactions = pendingTransactions.filter(t => t.id !== id);
+            clearNotificationsForTransaction(id);
+            savePendingTransactions();
+            applyFilter();
+            renderPendingTransactions();
+            updateNotificationBadge();
+        }
+    });
+
     function initializeChart() {
         const ctx = chartCanvas.getContext('2d');
-        if (myChart) myChart.destroy();
+        if (myChart) {
+            myChart.destroy();
+        }
         myChart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: [],
-                datasets: [ { label: 'الدخل', data: [], backgroundColor: 'rgba(46, 204, 113, 0.5)', borderColor: 'rgba(46, 204, 113, 1)', borderWidth: 1 }, { label: 'المصروفات', data: [], backgroundColor: 'rgba(231, 76, 60, 0.5)', borderColor: 'rgba(231, 76, 60, 1)', borderWidth: 1 } ]
+                datasets: [
+                    {
+                        label: 'الدخل',
+                        data: [],
+                        backgroundColor: 'rgba(46, 204, 113, 0.5)',
+                        borderColor: 'rgba(46, 204, 113, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'المصروفات',
+                        data: [],
+                        backgroundColor: 'rgba(231, 76, 60, 0.5)',
+                        borderColor: 'rgba(231, 76, 60, 1)',
+                        borderWidth: 1
+                    }
+                ]
             },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
         });
     }
 
     function updateChart() {
         const incomeData = {};
         const expenseData = {};
-        // Only use approved transactions
-        const approvedTransactions = transactions.filter(t => t.approved_by_id);
-        const sortedTransactions = [...approvedTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
         
         sortedTransactions.forEach(t => {
             let key;
             if (chartFilterType === 'yearly') {
                 key = t.date.substring(0, 4);
-            } else {
+            } else { // monthly
                 key = t.date.substring(0, 7);
             }
 
             if (t.type === 'income') {
-                incomeData[key] = (incomeData[key] || 0) + parseFloat(t.amount);
+                incomeData[key] = (incomeData[key] || 0) + t.amount;
             } else {
-                expenseData[key] = (expenseData[key] || 0) + parseFloat(t.amount);
+                expenseData[key] = (expenseData[key] || 0) + t.amount;
             }
         });
         
         let allMonths = [...new Set([...Object.keys(incomeData), ...Object.keys(expenseData)])].sort();
+        
         if (chartFilterType === 'monthly' && allMonths.length > 6) {
             allMonths = allMonths.slice(-6);
         }
 
-        const labels = allMonths.map(key => {
-            if (key.includes('-')) {
-                const parts = key.split('-');
-                return monthNames[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
-            }
-            return key;
-        });
-
         const incomeValues = allMonths.map(month => incomeData[month] || 0);
         const expenseValues = allMonths.map(month => expenseData[month] || 0);
 
-        myChart.data.labels = labels;
+        myChart.data.labels = allMonths;
         myChart.data.datasets[0].data = incomeValues;
         myChart.data.datasets[1].data = expenseValues;
         myChart.update();
     }
     
-    chartMenuBtn.addEventListener('click', () => chartOptions.classList.toggle('hidden'));
-    chartFilterMonthlyBtn.addEventListener('click', () => { chartFilterType = 'monthly'; chartOptions.classList.add('hidden'); chartFilterMonthlyBtn.classList.add('active'); chartFilterYearlyBtn.classList.remove('active'); updateChart(); });
-    chartFilterYearlyBtn.addEventListener('click', () => { chartFilterType = 'yearly'; chartOptions.classList.add('hidden'); chartFilterYearlyBtn.classList.add('active'); chartFilterMonthlyBtn.classList.remove('active'); updateChart(); });
+    chartMenuBtn.addEventListener('click', () => {
+        chartOptions.classList.toggle('hidden');
+    });
+
+    chartFilterMonthlyBtn.addEventListener('click', () => {
+        chartFilterType = 'monthly';
+        chartOptions.classList.add('hidden');
+        chartFilterMonthlyBtn.classList.add('active');
+        chartFilterYearlyBtn.classList.remove('active');
+        updateChart();
+    });
+
+    chartFilterYearlyBtn.addEventListener('click', () => {
+        chartFilterType = 'yearly';
+        chartOptions.classList.add('hidden');
+        chartFilterYearlyBtn.classList.add('active');
+        chartFilterMonthlyBtn.classList.remove('active');
+        updateChart();
+    });
+    
     chartFilterMonthlyBtn.classList.add('active');
 
-    // --- Summary Logic ---
     function updateSummary() {
-        // Only count approved transactions for the main summary
-        const approvedTransactions = transactions.filter(t => t.approved_by_id);
-        let totalIncome = approvedTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
-        let totalExpenses = approvedTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        let totalIncome = 0;
+        let totalExpenses = 0;
+
+        transactions.forEach(transaction => {
+            if (transaction.type === 'income') {
+                totalIncome += transaction.amount;
+            } else {
+                totalExpenses += transaction.amount;
+            }
+        });
+
         const balance = totalIncome - totalExpenses;
 
-        totalIncomeSpan.textContent = formatNumber(totalIncome);
-        totalExpensesSpan.textContent = formatNumber(totalExpenses);
-        balanceSpan.textContent = formatNumber(balance);
+        totalIncomeSpan.textContent = totalIncome.toFixed(2);
+        totalExpensesSpan.textContent = totalExpenses.toFixed(2);
+        balanceSpan.textContent = balance.toFixed(2);
         balanceSpan.style.color = balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     }
 
-    // --- Transaction Card Rendering ---
     function createTransactionCard(transaction) {
         const transactionCard = document.createElement('div');
         let cardClass = `transaction-card ${transaction.type}-card`;
         
-        // Note: The original code used rolesMap[transaction.last_edited_by_username] which is incorrect as rolesMap keys are roles. 
-        // We will check against the user's role found via their ID.
-        const lastEditedUser = transaction.last_edited_by_id ? users.find(u => u.id === transaction.last_edited_by_id) : null;
-        const lastEditedUserRole = lastEditedUser ? lastEditedUser.role : '';
-
-        if (lastEditedUserRole && !['manager', 'admin'].includes(lastEditedUserRole)) {
+        if (transaction.lastEditedBy && transaction.lastEditedBy.role !== 'manager') {
             cardClass += ' edited-by-user';
         }
         
@@ -1026,10 +882,9 @@ Document.addEventListener('DOMContentLoaded', () => {
             <p><strong>التصنيف:</strong> ${transaction.category}</p>
             <p><strong>من/إلى:</strong> ${transaction.fromTo || 'غير محدد'}</p>
             <p><strong>ملاحظة:</strong> ${transaction.note || 'لا توجد'}</p>
-            <span class="amount ${transaction.type}-label">${transaction.type === 'income' ? '+' : '-'}${formatNumber(parseFloat(transaction.amount))}</span>
-            <span class="user-info"><i class="fas fa-user-tag"></i> <strong>بواسطة:</strong> ${transaction.added_by_description} (${transaction.added_by_username})</span>
-            ${transaction.last_edited_by_username ? `<span class="user-info" style="color:#c49500;"><i class="fas fa-user-edit"></i> <strong>آخر تعديل:</strong> ${transaction.edited_by_description} (${transaction.last_edited_by_username})</span>` : ''}
-            ${transaction.approved_by_username ? `<span class="user-info approved-info"><i class="fas fa-check-circle"></i> <strong>الموافقة:</strong> ${transaction.approved_by_description} (${transaction.approved_by_username})</span>` : ''}
+            <span class="amount ${transaction.type}-label">${transaction.type === 'income' ? '+' : '-'}${transaction.amount.toFixed(2)}</span>
+            ${transaction.lastActionBy ? `<span class="user-info"><i class="fas fa-user-tag"></i> <strong>بواسطة:</strong> ${transaction.lastActionBy.description} (${transaction.lastActionBy.username})</span>` : ''}
+            ${transaction.lastEditedBy ? `<span class="user-info" style="color:#c49500;"><i class="fas fa-user-edit"></i> <strong>آخر تعديل:</strong> ${transaction.lastEditedBy.description} (${transaction.lastEditedBy.username})</span>` : ''}
         `;
 
         const canEdit = ['manager', 'admin', 'editor', 'employee', 'new_employee'].includes(currentUser.role);
@@ -1037,22 +892,29 @@ Document.addEventListener('DOMContentLoaded', () => {
 
         if (canEdit || canDelete) {
             transactionCard.classList.add('can-interact');
+            
             let actionsHtml = `<div class="transaction-actions">`;
-            // Only non-managers/admins need to submit edit requests, but everyone can initiate the form
-            if (canEdit) actionsHtml += `<button class="action-btn edit-btn" data-id="${transaction.id}"><i class="fas fa-edit"></i></button>`;
-            if (canDelete) actionsHtml += `<button class="action-btn delete-btn" data-id="${transaction.id}"><i class="fas fa-trash-alt"></i></button>`;
+            if (canEdit) {
+                actionsHtml += `<button class="action-btn edit-btn" data-id="${transaction.id}"><i class="fas fa-edit"></i></button>`;
+            }
+            if (canDelete) {
+                actionsHtml += `<button class="action-btn delete-btn" data-id="${transaction.id}"><i class="fas fa-trash-alt"></i></button>`;
+            }
             actionsHtml += `</div>`;
+            
             transactionCard.innerHTML = cardInnerHtml + actionsHtml;
+
         } else {
             transactionCard.innerHTML = cardInnerHtml;
         }
+
         transactionCard.dataset.id = transaction.id;
         return transactionCard;
     }
     
-    // --- Transaction Display Logic ---
-    function updateTransactionsContainer(filteredTransactions) {
+    function updateTransactionsContainer(filteredTransactions, isGrouped = true) {
         transactionsContainer.innerHTML = '';
+        
         const sortedTransactions = [...filteredTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         
         if (sortedTransactions.length === 0) {
@@ -1060,12 +922,19 @@ Document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (isSearchActive) {
+            appendSummary(sortedTransactions);
+            sortedTransactions.forEach(transaction => {
+                transactionsContainer.appendChild(createTransactionCard(transaction));
+            });
+            return;
+        }
+
         const duration = durationFilter.value;
         const groupedData = {};
         sortedTransactions.forEach(t => {
             let key;
-            // Group by year for yearly filters, or month for others
-            if (duration === 'current-year' || duration === 'last-year' || duration.includes('year') || isSearchActive && searchFromDateInput.value && searchToDateInput.value && (new Date(searchToDateInput.value).getFullYear() - new Date(searchFromDateInput.value).getFullYear() > 0)) {
+            if (duration === 'current-year' || duration === 'last-year') {
                 key = t.date.substring(0, 4);
             } else {
                 key = t.date.substring(0, 7);
@@ -1075,9 +944,9 @@ Document.addEventListener('DOMContentLoaded', () => {
                 groupedData[key] = { income: 0, expenses: 0, transactions: [] };
             }
             if (t.type === 'income') {
-                groupedData[key].income += parseFloat(t.amount);
+                groupedData[key].income += t.amount;
             } else {
-                groupedData[key].expenses += parseFloat(t.amount);
+                groupedData[key].expenses += t.amount;
             }
             groupedData[key].transactions.push(t);
         });
@@ -1086,60 +955,75 @@ Document.addEventListener('DOMContentLoaded', () => {
         
         sortedKeys.forEach(key => {
             const groupData = groupedData[key];
-            const summaryDiv = document.createElement('div');
-            const balance = groupData.income - groupData.expenses;
             
-            let titleText;
-            let groupTypeClass;
-            if (key.includes('-') && key.length === 7) { // YYYY-MM
-                const parts = key.split('-');
-                titleText = `ملخص شهر ${monthNames[parseInt(parts[1], 10) - 1]} ${parts[0]}`;
-                groupTypeClass = 'monthly-summary';
-            } else if (key.length === 4) { // YYYY
-                titleText = `ملخص عام ${key}`;
-                groupTypeClass = 'yearly-summary';
-            } else {
-                 titleText = `ملخص الفترة: ${key}`; // Should not happen with current logic, but fallback
-                 groupTypeClass = 'search-summary';
-            }
-
-            if (isSearchActive) groupTypeClass = 'search-summary';
+            appendSummary(groupData.transactions, key, duration);
             
-            summaryDiv.className = groupTypeClass;
-            summaryDiv.innerHTML = `<span class="summary-title">${titleText}</span><div class="summary-details"><p><strong>دخل:</strong> <span class="income-label">${formatNumber(groupData.income)}</span></p><p><strong>مصروف:</strong> <span class="expense-label">${formatNumber(groupData.expenses)}</span></p><p><strong>صافي:</strong> <span class="balance-label" style="color:${balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">${formatNumber(balance)}</span></p></div>`;
-            transactionsContainer.appendChild(summaryDiv);
-            
-            groupData.transactions.forEach(transaction => transactionsContainer.appendChild(createTransactionCard(transaction)));
+            groupData.transactions.forEach(transaction => {
+                transactionsContainer.appendChild(createTransactionCard(transaction));
+            });
         });
     }
 
+    function appendSummary(transactionsToSummarize, key = null, duration = null) {
+        let title, className;
+        let totalIncome = 0;
+        let totalExpenses = 0;
+
+        transactionsToSummarize.forEach(t => {
+            if (t.type === 'income') {
+                totalIncome += t.amount;
+            } else {
+                totalExpenses += t.amount;
+            }
+        });
+
+        if (isSearchActive) {
+            title = 'ملخص نتائج البحث';
+            className = 'search-summary';
+        } else {
+            if (duration === 'current-year' || duration === 'last-year') {
+                title = `ملخص عام ${key}`;
+                className = 'yearly-summary';
+            } else {
+                const [year, monthIndex] = key.split('-');
+                const monthName = monthNames[parseInt(monthIndex, 10) - 1];
+                title = `ملخص شهر ${monthName} ${year}`;
+                className = 'monthly-summary';
+            }
+        }
+
+        const summaryDiv = document.createElement('div');
+        const balance = totalIncome - totalExpenses;
+        summaryDiv.className = className;
+        summaryDiv.innerHTML = `
+            <span class="summary-title">${title}</span>
+            <div class="summary-details">
+                <p><strong>دخل:</strong> <span class="income-label">${totalIncome.toFixed(2)}</span></p>
+                <p><strong>مصروف:</strong> <span class="expense-label">${totalExpenses.toFixed(2)}</span></p>
+                <p><strong>صافي:</strong> <span class="balance-label" style="color:${balance >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">${balance.toFixed(2)}</span></p>
+            </div>
+        `;
+        transactionsContainer.appendChild(summaryDiv);
+    }
+    
     function getFilteredTransactions(duration) {
         const today = new Date();
-        const approvedTransactions = transactions.filter(t => t.approved_by_id); // Only approved transactions
-        let filtered = [];
-        
-        if (duration === 'all') {
-             filtered = approvedTransactions;
-        } else if (duration === 'today') {
-            const todayStr = today.toISOString().split('T')[0];
-            filtered = approvedTransactions.filter(t => t.date === todayStr);
-        } else if (duration === 'current-month') {
+        if (duration === 'current-month') {
             const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
             const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
-            filtered = approvedTransactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
+            return transactions.filter(t => t.date >= firstDayOfMonth && t.date <= lastDayOfMonth);
         } else if (duration === 'last-month') {
             const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             const firstDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0];
             const lastDayOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0];
-            filtered = approvedTransactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
+            return transactions.filter(t => t.date >= firstDayOfLastMonth && t.date <= lastDayOfLastMonth);
         } else if (duration === 'current-year') {
             const currentYear = today.getFullYear();
-            filtered = approvedTransactions.filter(t => new Date(t.date).getFullYear() == currentYear);
+            return transactions.filter(t => new Date(t.date).getFullYear() == currentYear);
         } else if (duration === 'last-year') {
             const lastYear = today.getFullYear() - 1;
-            filtered = approvedTransactions.filter(t => new Date(t.date).getFullYear() == lastYear);
+            return transactions.filter(t => new Date(t.date).getFullYear() == lastYear);
         }
-        return filtered;
     }
 
     function applyFilter() {
@@ -1147,24 +1031,65 @@ Document.addEventListener('DOMContentLoaded', () => {
             performAdvancedSearch();
             return;
         }
-        const filtered = getFilteredTransactions(durationFilter.value);
+
+        const duration = durationFilter.value;
+        let filtered = [];
+        
+        if (duration === 'today') {
+            const today = new Date().toISOString().split('T')[0];
+            filtered = transactions.filter(t => t.date === today);
+        } else {
+            filtered = getFilteredTransactions(duration);
+        }
+        
         updateTransactionsContainer(filtered);
     }
+
     durationFilter.addEventListener('change', applyFilter);
     
-    // --- Transaction Modal & Form Logic ---
-    addIncomeBtn.addEventListener('click', () => { modal.style.display = 'block'; modalTitle.textContent = 'إضافة دخل'; transactionTypeInput.value = 'income'; transactionIdInput.value = ''; transactionForm.reset(); transactionFormSubmitBtn.textContent = 'إضافة'; transactionFormSubmitBtn.disabled = false; });
-    addExpenseBtn.addEventListener('click', () => { modal.style.display = 'block'; modalTitle.textContent = 'إضافة مصروف'; transactionTypeInput.value = 'expense'; transactionIdInput.value = ''; transactionForm.reset(); transactionFormSubmitBtn.textContent = 'إضافة'; transactionFormSubmitBtn.disabled = false; });
-    closeBtn.addEventListener('click', () => modal.style.display = 'none');
-    window.addEventListener('click', (e) => { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; });
-    
-    transactionForm.addEventListener('submit', async (e) => {
+    addIncomeBtn.addEventListener('click', () => {
+        modal.style.display = 'block';
+        modalTitle.textContent = 'إضافة دخل';
+        transactionTypeInput.value = 'income';
+        transactionIdInput.value = '';
+        transactionForm.reset();
+        document.querySelector('#transaction-form .submit-btn').textContent = 'إضافة';
+    });
+
+    addExpenseBtn.addEventListener('click', () => {
+        modal.style.display = 'block';
+        modalTitle.textContent = 'إضافة مصروف';
+        transactionTypeInput.value = 'expense';
+        transactionIdInput.value = '';
+        transactionForm.reset();
+        document.querySelector('#transaction-form .submit-btn').textContent = 'إضافة';
+    });
+
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+        transactionForm.reset();
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
+            transactionForm.reset();
+            addUserForm.classList.add('hidden');
+            showAddUserFormBtn.innerHTML = '<i class="fas fa-plus"></i> إضافة مستخدم جديد';
+        }
+        
+        if (!sidebar.contains(e.target) && !sidebarToggleBtn.contains(e.target)) {
+            sidebar.classList.remove('show');
+        }
+
+        if (!chartMenuBtn.contains(e.target) && !chartOptions.contains(e.target)) {
+            chartOptions.classList.add('hidden');
+        }
+    });
+
+    transactionForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        
-        transactionFormSubmitBtn.disabled = true;
-        const originalText = transactionFormSubmitBtn.textContent;
-        transactionFormSubmitBtn.textContent = 'جاري الإرسال...';
-        
+
         const type = transactionTypeInput.value;
         const date = document.getElementById('date').value;
         const category = document.getElementById('category').value;
@@ -1173,38 +1098,61 @@ Document.addEventListener('DOMContentLoaded', () => {
         const note = document.getElementById('note').value;
         const transactionId = transactionIdInput.value;
         
-        const data = { type, date, category, amount, fromTo, note };
-        let response;
-        
+        const needsApprovalForEdit = ['employee', 'new_employee'].includes(currentUser.role);
+        const needsApprovalForNew = ['new_employee'].includes(currentUser.role);
+        const currentUserInfo = { username: currentUser.username, description: rolesMap[currentUser.role], role: currentUser.role };
+
         if (transactionId) {
-            data.id = transactionId;
-            // Replaced fetchAPI('transactions.php?action=edit', 'POST', data)
-            response = await editTransaction(data);
+            if (needsApprovalForEdit) {
+                const editedTransaction = {
+                    id: Date.now(), originalId: parseInt(transactionId),
+                    date, category, amount, fromTo, note, type,
+                    lastActionBy: currentUserInfo
+                };
+                pendingTransactions.push(editedTransaction);
+                createNotificationsForPendingTransaction(editedTransaction);
+                savePendingTransactions();
+                
+                const originalTransaction = transactions.find(t => t.id == transactionId);
+                if (originalTransaction) originalTransaction.isEdited = true;
+                saveTransactions();
+                alert('تم إرسال طلب التعديل للموافقة.');
+            } else {
+                const index = transactions.findIndex(t => t.id == transactionId);
+                if (index !== -1) {
+                    transactions[index] = {
+                        ...transactions[index], date, category, amount, fromTo, note, type,
+                        lastActionBy: currentUserInfo, lastEditedBy: currentUserInfo
+                    };
+                }
+                saveTransactions();
+            }
         } else {
-            // Replaced fetchAPI('transactions.php?action=add', 'POST', data)
-            response = await addTransaction(data);
+            const newTransaction = {
+                id: Date.now(), date, category, amount, fromTo, note, type,
+                lastActionBy: currentUserInfo
+            };
+            if (needsApprovalForNew) {
+                pendingTransactions.push(newTransaction);
+                createNotificationsForPendingTransaction(newTransaction);
+                savePendingTransactions();
+                alert('تم إرسال المعاملة الجديدة للموافقة.');
+            } else {
+                transactions.push(newTransaction);
+                saveTransactions();
+            }
         }
         
-        alert(response.message);
-        if (response.success) {
-            await fetchAllData();
-            applyFilter();
-            updateSummary();
-            updateChart();
-        }
-        
-        setTimeout(() => {
-            transactionFormSubmitBtn.disabled = false;
-            transactionFormSubmitBtn.textContent = originalText;
-            modal.style.display = 'none';
-        }, 300); // Reduced delay for local operations
+        applyFilter();
+        updateSummary();
+        updateChart();
+        updateNotificationBadge();
+        modal.style.display = 'none';
     });
-    
-    // --- Transaction Actions (Edit/Delete) Logic ---
-    transactionsContainer.addEventListener('click', async (e) => {
+
+    transactionsContainer.addEventListener('click', (e) => {
         const editBtn = e.target.closest('.edit-btn');
         const deleteBtn = e.target.closest('.delete-btn');
-        const swipedCard = e.target.closest('.transaction-card.swiped');
 
         if (editBtn) {
             const transactionId = editBtn.dataset.id;
@@ -1215,49 +1163,35 @@ Document.addEventListener('DOMContentLoaded', () => {
                 transactionIdInput.value = transaction.id;
                 document.getElementById('date').value = transaction.date;
                 document.getElementById('category').value = transaction.category;
-                document.getElementById('amount').value = parseFloat(transaction.amount);
+                document.getElementById('amount').value = transaction.amount;
                 document.getElementById('from-to').value = transaction.fromTo;
                 document.getElementById('note').value = transaction.note;
-                
-                const isManagerOrAdmin = ['manager', 'admin'].includes(currentUser.role);
-                transactionFormSubmitBtn.textContent = isManagerOrAdmin ? 'تعديل مباشر' : 'طلب تعديل';
-                transactionFormSubmitBtn.disabled = false;
+                document.querySelector('#transaction-form .submit-btn').textContent = 'تعديل';
                 modal.style.display = 'block';
             }
         } else if (deleteBtn) {
-            const transactionId = deleteBtn.dataset.id;
+            const transactionId = parseInt(deleteBtn.dataset.id);
             if (confirm('هل أنت متأكد من حذف هذه المعاملة؟')) {
-                // Replaced fetchAPI('transactions.php?action=delete', 'POST', { id: transactionId })
-                const response = await deleteTransaction(transactionId);
-                alert(response.message);
-                if(response.success) {
-                    await fetchAllData();
-                    applyFilter();
-                    updateSummary();
-                    updateChart();
-                }
+                transactions = transactions.filter(t => t.id !== transactionId);
+                saveTransactions();
+                applyFilter();
+                updateSummary();
+                updateChart();
             }
-        }
-        if (swipedCard) {
-            swipedCard.classList.remove('swiped');
-            swipedCard.style.transform = 'translateX(0)';
-            const actions = swipedCard.querySelector('.transaction-actions');
-            if(actions) actions.style.left = '-120px';
         }
     });
 
-    // --- Touch Swipe Logic ---
     let startX = 0;
     let currentCard = null;
 
     transactionsContainer.addEventListener('touchstart', (e) => {
-        const card = e.target.closest('.transaction-card.can-interact');
-        if (card) {
+        if (e.target.closest('.transaction-card.can-interact')) {
+            const card = e.target.closest('.transaction-card');
             if (currentCard && currentCard !== card) {
                 currentCard.style.transform = 'translateX(0)';
                 currentCard.classList.remove('swiped');
                 const actions = currentCard.querySelector('.transaction-actions');
-                if (actions) actions.style.left = '-120px';
+                if (actions) actions.style.right = '-120px';
             }
             startX = e.touches[0].clientX;
             currentCard = card;
@@ -1267,16 +1201,16 @@ Document.addEventListener('DOMContentLoaded', () => {
     transactionsContainer.addEventListener('touchmove', (e) => {
         if (currentCard) {
             const currentX = e.touches[0].clientX;
-            const diffX = currentX - startX;
+            const diffX = startX - currentX;
             if (diffX > 20) {
                 const swipeDistance = Math.min(diffX, 120);
-                currentCard.style.transform = `translateX(${swipeDistance}px)`;
+                currentCard.style.transform = `translateX(-${swipeDistance}px)`;
                 const actions = currentCard.querySelector('.transaction-actions');
-                if(actions) actions.style.left = `-${120 - swipeDistance}px`;
+                if(actions) actions.style.right = `-${120 - swipeDistance}px`;
             } else {
                 currentCard.style.transform = 'translateX(0)';
                 const actions = currentCard.querySelector('.transaction-actions');
-                if(actions) actions.style.left = '-120px';
+                if(actions) actions.style.right = '-120px';
             }
         }
     }, { passive: true });
@@ -1284,39 +1218,42 @@ Document.addEventListener('DOMContentLoaded', () => {
     transactionsContainer.addEventListener('touchend', (e) => {
         if (currentCard) {
             const endX = e.changedTouches[0].clientX;
-            const diffX = endX - startX;
+            const diffX = startX - endX;
             const actions = currentCard.querySelector('.transaction-actions');
             if (diffX > 60) {
-                currentCard.style.transform = 'translateX(120px)';
-                if(actions) actions.style.left = '0';
+                currentCard.style.transform = 'translateX(-120px)';
+                if(actions) actions.style.right = '0';
                 currentCard.classList.add('swiped');
             } else {
                 currentCard.style.transform = 'translateX(0)';
-                if(actions) actions.style.left = '-120px';
+                if(actions) actions.style.right = '-120px';
                 currentCard.classList.remove('swiped');
             }
             currentCard = null;
         }
     });
-
-    document.addEventListener('click', (e) => {
-        document.querySelectorAll('.transaction-card.swiped').forEach(card => {
-            if (!card.contains(e.target)) {
-                card.style.transform = 'translateX(0)';
+    
+    window.addEventListener('click', (e) => {
+        const isTransactionCard = e.target.closest('.transaction-card');
+        const isModal = e.target.closest('.modal-content');
+        if (!isTransactionCard && !isModal) {
+            transactionsContainer.querySelectorAll('.transaction-card.swiped').forEach(card => {
                 card.classList.remove('swiped');
+                card.style.transform = 'translateX(0)';
                 const actions = card.querySelector('.transaction-actions');
-                if (actions) {
-                    actions.style.left = '-120px';
-                }
-            }
-        });
+                if(actions) actions.style.right = '-120px';
+            });
+        }
     });
 
-    
-    // --- Advanced Search Logic ---
-    advancedSearchBtn.addEventListener('click', () => advancedSearchModal.style.display = 'block');
-    advancedSearchModalCloseBtn.addEventListener('click', () => advancedSearchModal.style.display = 'none');
-    
+    advancedSearchBtn.addEventListener('click', () => {
+        advancedSearchModal.style.display = 'block';
+    });
+
+    advancedSearchModalCloseBtn.addEventListener('click', () => {
+        advancedSearchModal.style.display = 'none';
+    });
+
     advancedSearchForm.addEventListener('submit', (e) => {
         e.preventDefault();
         isSearchActive = true;
@@ -1342,55 +1279,55 @@ Document.addEventListener('DOMContentLoaded', () => {
         const searchUsername = searchUsernameInput.value.trim().toLowerCase();
         const searchFromDate = searchFromDateInput.value;
         const searchToDate = searchToDateInput.value;
-        
-        // Only search approved transactions
-        const approvedTransactions = transactions.filter(t => t.approved_by_id);
 
-        const filtered = approvedTransactions.filter(t => {
+        const filtered = transactions.filter(t => {
             const typeMatch = searchType === '' || t.type === searchType;
             const categoryMatch = searchCategory === '' || (t.category && t.category.toLowerCase().includes(searchCategory));
             const noteMatch = searchNote === '' || (t.note && t.note.toLowerCase().includes(searchNote));
             const fromToMatch = searchFromTo === '' || (t.fromTo && t.fromTo.toLowerCase().includes(searchFromTo));
-            
-            // Manager only search criteria for username
-            let usernameMatch = true;
-            if (currentUser && currentUser.role === 'manager' && searchUsername !== '') {
-                usernameMatch = (t.added_by_username && t.added_by_username.toLowerCase().includes(searchUsername));
-            } else if (currentUser && currentUser.role !== 'manager' && searchUsername !== '') {
-                 // Non-managers should not see this field's effect unless they are searching their own name, but for consistency we use the original logic if the field is visible.
-                 usernameMatch = (t.added_by_username && t.added_by_username.toLowerCase().includes(searchUsername));
-            }
-            
+            const usernameMatch = !currentUser || currentUser.role !== 'manager' || searchUsername === '' || (t.lastActionBy && t.lastActionBy.username.toLowerCase().includes(searchUsername));
+
             let dateMatch = true;
             const transactionDate = new Date(t.date);
             if (searchFromDate) {
                 const fromDate = new Date(searchFromDate);
-                if (transactionDate < fromDate) dateMatch = false;
+                if (transactionDate < fromDate) {
+                    dateMatch = false;
+                }
             }
             if (searchToDate) {
                 const toDate = new Date(searchToDate);
                 toDate.setDate(toDate.getDate() + 1);
-                if (transactionDate >= toDate) dateMatch = false;
+                if (transactionDate > toDate) {
+                    dateMatch = false;
+                }
             }
+            
             return typeMatch && categoryMatch && noteMatch && fromToMatch && usernameMatch && dateMatch;
         });
-        updateTransactionsContainer(filtered);
+        
+        updateTransactionsContainer(filtered, false);
     }
     
-    searchActiveBadge.addEventListener('click', () => clearSearchBtn.click());
+    searchActiveBadge.addEventListener('click', () => {
+        clearSearchBtn.click();
+    });
 
-    // --- Backup/Restore Logic ---
-    backupBtn.addEventListener('click', () => backupModal.style.display = 'block');
-    backupModalCloseBtn.addEventListener('click', () => backupModal.style.display = 'none');
-    
-    createBackupBtn.addEventListener('click', async () => {
-        // Data is already in memory, just structure it
+    backupBtn.addEventListener('click', () => {
+        backupModal.style.display = 'block';
+    });
+
+    backupModalCloseBtn.addEventListener('click', () => {
+        backupModal.style.display = 'none';
+    });
+
+    createBackupBtn.addEventListener('click', () => {
         const backupData = {
-            users: users,
-            transactions: loadFromLocalStorage(LS_TRANSACTIONS),
-            pendingTransactions: loadFromLocalStorage(LS_PENDING),
-            backupDate: new Date().toISOString(),
-            version: 1.0 // Optional versioning
+            users: getUsers(),
+            transactions: transactions,
+            pendingTransactions: pendingTransactions,
+            notifications: getNotifications(),
+            backupDate: new Date().toISOString()
         };
         const jsonString = JSON.stringify(backupData, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -1411,28 +1348,24 @@ Document.addEventListener('DOMContentLoaded', () => {
             fileNameDisplay.textContent = 'لم يتم اختيار أي ملف.';
             return;
         }
+
         fileNameDisplay.textContent = `الملف المختار: ${file.name}`;
+
         const reader = new FileReader();
-        reader.onload = async (e) => {
+        reader.onload = (e) => {
             try {
                 const restoredData = JSON.parse(e.target.result);
                 if (restoredData && restoredData.users && restoredData.transactions) {
-                    if (confirm('هل أنت متأكد من أنك تريد استعادة هذه البيانات؟ سيتم الكتابة فوق جميع البيانات الحالية في المتصفح.')) {
-                        // Restore to localStorage
-                        saveToLocalStorage(LS_USERS, restoredData.users);
-                        saveToLocalStorage(LS_TRANSACTIONS, restoredData.transactions);
-                        // Pending transactions is optional in backup
-                        if (restoredData.pendingTransactions) {
-                            saveToLocalStorage(LS_PENDING, restoredData.pendingTransactions);
-                        } else {
-                            localStorage.removeItem(LS_PENDING); // Clear if not in backup
-                        }
-                        
-                        alert('تم استعادة البيانات بنجاح من الملف! سيتم إعادة تحميل التطبيق.');
-                        window.location.reload(); // Force reload to ensure all data is loaded from LS
+                    if (confirm('هل أنت متأكد من أنك تريد استعادة هذه البيانات؟ سيتم الكتابة فوق جميع البيانات الحالية.')) {
+                        saveUsers(restoredData.users);
+                        localStorage.setItem('transactions', JSON.stringify(restoredData.transactions));
+                        localStorage.setItem('pendingTransactions', JSON.stringify(restoredData.pendingTransactions || []));
+                        localStorage.setItem('notifications', JSON.stringify(restoredData.notifications || []));
+                        alert('تمت استعادة البيانات بنجاح! سيتم إعادة تحميل الصفحة.');
+                        window.location.reload();
                     }
                 } else {
-                    alert('ملف النسخة الاحتياطية غير صالح أو تالف. يجب أن يحتوي على "users" و "transactions".');
+                    alert('ملف النسخة الاحتياطية غير صالح أو تالف.');
                 }
             } catch (error) {
                 alert('خطأ في قراءة الملف. تأكد من أنه ملف JSON صالح.');
@@ -1445,6 +1378,10 @@ Document.addEventListener('DOMContentLoaded', () => {
         reader.readAsText(file);
     });
     
-    // --- Start Application ---
+    if (!localStorage.getItem('users')) {
+        saveUsers(getInitialUsers());
+    }
+    
+    // Check login status on page load
     checkLoginStatus();
 });
