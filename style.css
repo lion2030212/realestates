@@ -170,18 +170,22 @@ body {
 
 .dashboard-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
     gap: 20px;
-    flex-wrap: wrap;
 }
 
 .summary-cards-container {
     display: flex;
+    justify-content: center;
+    width: 100%;
+}
+.summary-cards-row {
+    display: flex;
     gap: 15px;
-    flex-grow: 1;
     justify-content: center;
     flex-wrap: wrap;
+    width: 100%;
 }
 
 .summary-card {
@@ -190,9 +194,9 @@ body {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     background-color: var(--card-background);
     text-align: center;
-    min-width: 180px;
+    min-width: 250px;
     flex: 1;
-    max-width: 250px;
+    max-width: 350px;
     transition: transform 0.2s;
 }
 
@@ -201,7 +205,7 @@ body {
 }
 
 .summary-card p {
-    font-size: 0.9em;
+    font-size: 1.2em;
     color: #666;
     margin-bottom: 8px;
     display: flex;
@@ -209,10 +213,15 @@ body {
     justify-content: center;
     gap: 8px;
 }
+.summary-card p i {
+    font-size: 1em;
+}
 
 .summary-card span {
-    font-size: 2em;
+    font-size: 1.2em; /* Reduced font size */
     font-weight: bold;
+    display: block;
+    word-break: break-all;
 }
 
 .income span { color: var(--success-color); }
@@ -223,8 +232,12 @@ body {
     display: flex;
     gap: 10px;
     align-self: center;
-    min-width: 200px;
-    flex-direction: column;
+    flex-direction: row;
+    width: 100%;
+    max-width: 450px;
+}
+.actions button {
+    flex: 1;
 }
 
 .action-btn {
@@ -262,7 +275,6 @@ body {
     margin-bottom: 15px;
 }
 
-/* New Chart Header Styles */
 .chart-header {
     display: flex;
     justify-content: space-between;
@@ -288,8 +300,8 @@ body {
 .chart-options {
     position: absolute;
     top: 100%;
-    left: 0;
-    right: auto;
+    right: 0;
+    left: auto;
     background-color: var(--card-background);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -311,7 +323,6 @@ body {
     background-color: var(--primary-color);
     color: white;
 }
-/* End New Chart Header Styles */
 
 .chart-container {
     position: relative;
@@ -337,7 +348,7 @@ body {
 .search-btn-container {
     position: relative;
     display: inline-block;
-    order: 1; /* Move search icon to the left */
+    order: 1;
 }
 
 .filter-box {
@@ -345,7 +356,7 @@ body {
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    order: 2; /* Keep filter dropdown to the right */
+    order: 2;
 }
 .filter-box-users, .filter-box-permissions {
     display: flex;
@@ -380,7 +391,7 @@ body {
 .search-active-badge {
     position: absolute;
     top: -5px;
-    left: -5px;
+    right: -5px;
     width: 10px;
     height: 10px;
     background-color: var(--success-color);
@@ -427,13 +438,11 @@ body {
     background-color: #fcebeb;
 }
 
-/* Style for pending edit requests */
 .transaction-card.pending-edit {
     background-color: #fffde7; 
     border-right-color: #ffeb3b;
 }
 
-/* New style for approved edits by non-managers */
 .transaction-card.edited-by-user {
     background-color: #fffde7;
     border-right-color: #ffeb3b;
@@ -445,7 +454,7 @@ body {
 }
 
 .transaction-card.swiped {
-    transform: translateX(-120px);
+    transform: translateX(120px);
 }
 
 .transaction-card p {
@@ -462,7 +471,7 @@ body {
 }
 
 .transaction-card .amount {
-    font-size: 1.2em;
+    font-size: 1.2em; /* Reduced font size for amounts */
     font-weight: bold;
     grid-column: 1 / -1;
     text-align: left;
@@ -485,11 +494,11 @@ body {
 .transaction-actions {
     position: absolute;
     top: 0;
-    right: -120px;
+    left: -120px;
     height: 100%;
     width: 120px;
     display: flex;
-    transition: right 0.3s ease;
+    transition: left 0.3s ease;
 }
 
 .transaction-actions .action-btn {
@@ -526,6 +535,10 @@ body {
     flex-wrap: wrap;
     font-size: 0.9em;
     margin-top: 10px;
+}
+
+.summary-details p {
+    font-size: 0.9em;
 }
 
 .summary-title {
@@ -985,8 +998,9 @@ body {
         flex-direction: column;
         align-items: center;
     }
-    .summary-cards-container {
+    .summary-cards-container, .summary-cards-row {
         width: 100%;
+        justify-content: space-around;
     }
     .summary-card {
         flex: 1 1 45%;
@@ -1008,10 +1022,10 @@ body {
         margin-top: 10px;
     }
     .search-btn-container {
-        order: unset; /* Revert order for mobile if needed */
+        order: unset;
     }
     .filter-box {
-        order: unset; /* Revert order for mobile if needed */
+        order: unset;
     }
     .search-box {
         margin-top: 10px;
